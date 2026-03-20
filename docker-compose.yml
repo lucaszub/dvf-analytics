@@ -2,14 +2,23 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24
-    network_mode: host   # bypass iptables NAT issues on VPS
+    network_mode: host
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  ingest:
+    build: ./ingestion
+    network_mode: host
+    environment:
+      CLICKHOUSE_HOST: localhost
+    depends_on:
+      clickhouse:
+        condition: service_healthy
 
 volumes:
   clickhouse-data:
