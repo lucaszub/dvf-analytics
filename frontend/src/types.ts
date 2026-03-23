@@ -32,6 +32,17 @@ export interface KpiData {
   }
 }
 
+export interface TypeStat {
+  type: TypeBien
+  ventes: number
+  prixMedian: number
+}
+
+export interface DistBucket {
+  label: string
+  count: number
+}
+
 export const DEPT_NOMS: Record<DeptCode, string> = {
   '22': 'Côtes-d\'Armor',
   '29': 'Finistère',

@@ -8,78 +8,58 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 240 10% 4%;       /* zinc-950 */
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 240 10% 4%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 347 100% 60%;     /* #FF385C Airbnb red */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 240 10% 4%;          /* zinc-950 */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 5% 96%;        /* zinc-100 */
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%; /* zinc-500 */
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 347 100% 60%;
-    --radius: 0.75rem;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 90%;           /* zinc-200 */
+    --input: 240 6% 90%;
+    --ring: 240 10% 4%;
+    --radius: 0.5rem;
   }
-
-  * {
-    @apply border-border;
-    box-sizing: border-box;
-  }
+  * { @apply border-border; box-sizing: border-box; }
   body {
     @apply bg-background text-foreground;
     font-family: 'Geist Variable', sans-serif;
   }
-
-  @keyframes accordion-down {
-    from { height: 0; }
-    to { height: var(--radix-accordion-content-height); }
-  }
-  @keyframes accordion-up {
-    from { height: var(--radix-accordion-content-height); }
-    to { height: 0; }
-  }
 }
 
-/* Leaflet overrides — light theme */
-.leaflet-container {
-  background: #e8e0d8 !important;
-  font-family: 'Geist Variable', sans-serif;
-}
-
+/* Leaflet — light theme */
+.leaflet-container { background: #e8e0d8 !important; }
 .leaflet-control-zoom a {
   background: white !important;
-  color: #222 !important;
-  border-color: #e0e0e0 !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  color: #09090b !important;
+  border-color: #e4e4e7 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
 }
-
 .leaflet-control-attribution {
-  background: rgba(255,255,255,0.8) !important;
-  color: #888 !important;
+  background: rgba(255,255,255,.75) !important;
+  color: #a1a1aa !important;
   font-size: 10px;
 }
 
-/* Custom dept tooltip */
+/* Dept tooltip */
 .dept-tooltip {
   background: white;
-  border: 1px solid #e5e5e5;
-  border-radius: 10px;
-  padding: 12px 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.10);
   font-family: 'Geist Variable', sans-serif;
-  min-width: 160px;
+  min-width: 150px;
 }
 .dept-tooltip::before { display: none; }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 2px; }

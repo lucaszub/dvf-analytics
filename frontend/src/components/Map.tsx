@@ -5,7 +5,6 @@ import type { Feature } from 'geojson'
 import { bretagne } from '@/data/geoData'
 import type { DeptStats, Filters } from '@/types'
 import { priceColor } from '@/utils/colors'
-import { Badge } from '@/components/ui/badge'
 
 interface MapProps {
   deptStats: DeptStats[]
@@ -34,33 +33,32 @@ function MapLayers({ deptStats, filters }: MapProps) {
     const code = feature.properties.code as string
     const stats = statsMap[code]
     const isSelected = filters.departement !== 'all' && filters.departement === code
-    const color = stats ? priceColor(stats.prixMedian, minP, maxP) : '#e0e0e0'
+    const color = stats ? priceColor(stats.prixMedian, minP, maxP) : '#e5e7eb'
     return {
       fillColor: color,
-      fillOpacity: isSelected ? 0.82 : 0.68,
-      // Bordure fine blanche entre départements — style choroplèthe data.gouv.fr
-      color: isSelected ? '#FF385C' : 'rgba(255,255,255,0.9)',
-      weight: isSelected ? 2.5 : 1,
+      fillOpacity: isSelected ? 0.80 : 0.65,
+      color: isSelected ? '#09090b' : 'rgba(255,255,255,0.85)',
+      weight: isSelected ? 2 : 1,
     }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function onEachFeature(feature: Feature, layer: any) {
-    const code = feature.properties?.code as string
-    const nom  = feature.properties?.nom  as string
+    const code  = feature.properties?.code as string
+    const nom   = feature.properties?.nom  as string
     const stats = statsMap[code]
 
     if (stats) {
       layer.bindTooltip(
         `<div class="dept-tooltip">
-          <p style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 6px">${nom}</p>
-          <p style="font-size:26px;font-weight:700;color:#FF385C;margin:0;line-height:1">
+          <p style="font-size:10px;font-weight:500;color:#71717a;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 5px">${nom}</p>
+          <p style="font-size:22px;font-weight:700;color:#09090b;margin:0;line-height:1.1">
             ${stats.prixMedian.toLocaleString('fr-FR')}
-            <span style="font-size:14px;color:#aaa;font-weight:400;margin-left:2px">€/m²</span>
+            <span style="font-size:12px;color:#a1a1aa;font-weight:400;margin-left:2px">€/m²</span>
           </p>
-          <div style="height:1px;background:#f0f0f0;margin:8px 0 6px"></div>
-          <p style="font-size:12px;color:#666;margin:0">
-            ${stats.nbTransactions.toLocaleString('fr-FR')} <span style="color:#999">transactions</span>
+          <div style="height:1px;background:#f4f4f5;margin:7px 0 6px"></div>
+          <p style="font-size:11px;color:#71717a;margin:0">
+            <span style="color:#09090b;font-weight:500">${stats.nbTransactions.toLocaleString('fr-FR')}</span> transactions
           </p>
         </div>`,
         { sticky: true, opacity: 1, className: '' }
@@ -69,16 +67,10 @@ function MapLayers({ deptStats, filters }: MapProps) {
 
     layer.on({
       mouseover(e: LeafletMouseEvent) {
-        e.target.setStyle({
-          fillOpacity: 0.9,
-          weight: 2.5,
-          color: '#FF385C',
-        })
+        e.target.setStyle({ fillOpacity: 0.88, weight: 2, color: '#09090b' })
         e.target.bringToFront()
       },
-      mouseout() {
-        layer.setStyle(style(feature))
-      },
+      mouseout() { layer.setStyle(style(feature)) },
       click(e: LeafletMouseEvent) {
         map.fitBounds(e.target.getBounds(), { padding: [80, 80] })
       },
@@ -97,7 +89,7 @@ function MapLayers({ deptStats, filters }: MapProps) {
 
 export function Map({ deptStats, filters }: MapProps) {
   return (
-    <div className="relative flex-1 h-full">
+    <div className="absolute inset-0">
       <MapContainer
         center={[48.2, -3.0]}
         zoom={8}
@@ -111,21 +103,6 @@ export function Map({ deptStats, filters }: MapProps) {
         <MapController filters={filters} />
         <MapLayers deptStats={deptStats} filters={filters} />
       </MapContainer>
-
-      {/* Badges contexte */}
-      <div className="absolute top-4 right-4 z-[1000] flex gap-2 pointer-events-none">
-        <Badge variant="secondary" className="bg-white/95 text-foreground border shadow-sm text-xs font-medium">
-          {filters.annee === 'all' ? '2018 – 2024' : filters.annee}
-        </Badge>
-        <Badge variant="secondary" className="bg-white/95 text-foreground border shadow-sm text-xs font-medium">
-          {filters.typeBien === 'all' ? 'Tous types' : filters.typeBien}
-        </Badge>
-        {filters.departement !== 'all' && (
-          <Badge className="bg-primary text-primary-foreground text-xs font-medium shadow-sm">
-            Dept. {filters.departement}
-          </Badge>
-        )}
-      </div>
     </div>
   )
 }
