@@ -1,0 +1,11 @@
+dvf_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: silver
+      host: "{{ env_var('CLICKHOUSE_HOST', 'localhost') }}"
+      port: 8123
+      user: default
+      password: ""
+      secure: false

@@ -1,0 +1,30 @@
+name: dvf_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: dvf_analytics
+
+model-paths: ["models"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+docs-paths: ["docs"]
+asset-paths: ["assets"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  dvf_analytics:
+    silver:
+      +schema: silver
+      +materialized: table
+      +engine: MergeTree()
+    gold:
+      +schema: gold
+      +materialized: table
+      +engine: MergeTree()

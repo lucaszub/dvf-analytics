@@ -35,7 +35,7 @@ curl http://localhost:8000/docs
 |--------|--------|
 | Docker Compose + ClickHouse | ✅ Done |
 | ingestion/ (bronze) | ✅ Done |
-| transform/ (dbt Silver + Gold) | ❌ Not started |
+| transform/ (dbt Silver + Gold) | ✅ Done |
 | api/ (FastAPI) | ❌ Not started |
 | frontend/ (React) | ❌ Not started |
 | .gitlab-ci.yml | ❌ Not started |

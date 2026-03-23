@@ -22,5 +22,13 @@ services:
       clickhouse:
         condition: service_healthy
 
+  dbt:
+    build: ./transform
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+
 volumes:
   clickhouse-data:

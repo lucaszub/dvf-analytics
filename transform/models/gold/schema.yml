@@ -1,0 +1,74 @@
+version: 2
+
+models:
+  - name: mart_prix_commune
+    description: >
+      Prix médian par commune × année × type. NULL si < 5 transactions.
+      Inclut coordonnées GPS et évolution % N-1.
+    columns:
+      - name: code_commune
+        description: Code INSEE commune
+        tests:
+          - not_null
+      - name: annee
+        tests:
+          - not_null
+      - name: type_local
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Appartement", "Maison"]
+      - name: nb_transactions
+        tests:
+          - not_null
+
+  - name: mart_prix_code_postal
+    description: >
+      Prix médian par code postal × année × type. NULL si < 5 transactions.
+      Niveau de drill-down intermédiaire (322 codes postaux en Bretagne).
+    columns:
+      - name: code_postal
+        tests:
+          - not_null
+      - name: annee
+        tests:
+          - not_null
+      - name: type_local
+        tests:
+          - not_null
+
+  - name: mart_prix_departement
+    description: >
+      Prix médian par département × année × type.
+      Inclut commune la plus chère et la moins chère.
+    columns:
+      - name: code_departement
+        tests:
+          - not_null
+      - name: annee
+        tests:
+          - not_null
+      - name: prix_median_m2
+        tests:
+          - not_null
+      - name: nb_transactions
+        tests:
+          - not_null
+
+  - name: mart_prix_bretagne
+    description: >
+      Agrégation Bretagne entière par année × type.
+      Référence pour les KPIs globaux de l'application.
+    columns:
+      - name: annee
+        tests:
+          - not_null
+      - name: type_local
+        tests:
+          - not_null
+      - name: prix_median_m2
+        tests:
+          - not_null
+      - name: nb_transactions
+        tests:
+          - not_null

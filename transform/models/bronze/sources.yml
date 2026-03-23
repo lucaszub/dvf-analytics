@@ -1,0 +1,44 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: bronze
+    schema: bronze
+    tables:
+      - name: raw_dvf
+        description: >
+          Données DVF brutes — une ligne par lot (appartement, cave, parking...),
+          plusieurs lignes peuvent partager le même id_mutation.
+        columns:
+          - name: id_mutation
+            description: Identifiant unique de la transaction (une vente = N lignes)
+          - name: date_mutation
+            description: Date de la transaction
+          - name: nature_mutation
+            description: Type de mutation (Vente, Adjudication, Echange...)
+          - name: valeur_fonciere
+            description: Prix total de la vente (identique sur toutes les lignes d'une mutation)
+          - name: type_local
+            description: Type de bien (Maison, Appartement, Dépendance, ...)
+          - name: surface_reelle_bati
+            description: Surface bâtie du lot en m²
+          - name: code_commune
+            description: Code INSEE de la commune (5 chiffres)
+          - name: code_departement
+            description: Code du département (22, 29, 35, 56)
+          - name: code_postal
+            description: Code postal
+
+      - name: raw_communes
+        description: Référentiel communes Bretagne avec coordonnées GPS centroïde
+        columns:
+          - name: code_commune
+            description: Code INSEE commune
+          - name: nom_commune
+            description: Nom de la commune
+          - name: code_dept
+            description: Code département
+          - name: longitude
+            description: Longitude du centroïde
+          - name: latitude
+            description: Latitude du centroïde

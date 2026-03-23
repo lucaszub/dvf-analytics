@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: stg_dvf
+    description: >
+      Une ligne par mutation (vente), avec agrégation des surfaces multi-lots.
+      Filtré sur Appartement/Maison, nature_mutation=Vente, prix_m2 entre 500 et 25 000 €.
+    columns:
+      - name: id_mutation
+        description: Identifiant unique de la vente
+        tests:
+          - not_null
+          - unique
+      - name: prix_m2
+        description: Prix au m² calculé sur la surface totale de la mutation
+        tests:
+          - not_null
+      - name: code_commune
+        description: Code INSEE commune
+        tests:
+          - not_null
+      - name: type_local
+        description: Type de bien résidentiel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Appartement", "Maison"]
+      - name: annee
+        description: Année de la transaction
+        tests:
+          - not_null
+
+  - name: stg_communes
+    description: Référentiel communes Bretagne avec coordonnées GPS centroïde
+    columns:
+      - name: code_commune
+        description: Code INSEE commune
+        tests:
+          - not_null
+          - unique
+      - name: longitude
+        description: Longitude du centroïde
+        tests:
+          - not_null
+      - name: latitude
+        description: Latitude du centroïde
+        tests:
+          - not_null
