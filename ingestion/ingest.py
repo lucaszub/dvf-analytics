@@ -232,8 +232,12 @@ def ingest_communes(client) -> None:
     for dept in DEPARTEMENTS:
         url = GEOJSON_URL.format(dept=dept)
         log.info(f"GeoJSON communes dept {dept} → {url}")
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            log.warning(f"GeoJSON dept {dept} indisponible : {e} — skip.")
+            continue
         features = response.json().get("features", [])
         for f in features:
             props = f.get("properties", {})

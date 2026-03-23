@@ -2,20 +2,22 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24
-    network_mode: host
+    ports:
+      - "8124:8123"
+      - "9002:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/users.d:/etc/clickhouse-server/users.d
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   ingest:
     build: ./ingestion
-    network_mode: host
     environment:
-      CLICKHOUSE_HOST: localhost
+      CLICKHOUSE_HOST: clickhouse
     depends_on:
       clickhouse:
         condition: service_healthy
