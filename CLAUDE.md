@@ -42,19 +42,47 @@ curl http://localhost:8000/docs
 
 ## Agentic setup
 
-Skills available (invoke with `/skill-name`):
-- `/implement-step N` — implements step N from PLAN.md end-to-end
-- `/dbt` — dbt-clickhouse patterns and run workflow (auto-loads when working in transform/)
-- `/security-review` — security audit (SQL injection, CORS, credentials)
-- `/docker-debug` — debug docker compose stack
+### Structure
 
-dbt lifecycle skills:
-- `/dbt-create-models` — créer/modifier un modèle Silver ou Gold
-- `/dbt-debug` — déboguer une erreur dbt (Compilation/Database/test failure)
-- `/dbt-incremental` — développer un modèle incremental
-- `/dbt-document` — documenter modèles et colonnes dans schema.yml
-- `/dbt-migrate-sql` — convertir du SQL legacy en modèles dbt
-- `/dbt-refactor` — refactorer des modèles avec analyse downstream
-- `/dbt-test` — ajouter ou déboguer des tests dbt
+```
+dvf-analytics/
+├── CLAUDE.md                    # ce fichier
+└── .claude/
+    ├── settings.json            # permissions, env vars, hooks
+    ├── agents/                  # subagents projet
+    │   ├── dbt-reviewer.md
+    │   └── security-reviewer.md
+    ├── hooks/                   # sqlfluff-check.sh, block-dangerous-sql.sh
+    ├── rules/                   # règles chargées par chemin de fichier
+    │   ├── api.md               # → appliqué sur api/**
+    │   ├── frontend.md          # → appliqué sur frontend/**
+    │   └── transform.md         # → appliqué sur transform/**
+    └── skills/                  # toutes les skills
+        ├── dbt/                 # skill principale dbt (SKILL.md = entry point)
+        │   ├── SKILL.md         # commandes, dialect ClickHouse, structure modèles
+        │   ├── create-models/   # créer/modifier un modèle Silver ou Gold
+        │   ├── debug/           # déboguer erreurs dbt
+        │   ├── document/        # schema.yml, descriptions
+        │   ├── incremental/     # modèles incrémentaux
+        │   ├── migrate-sql/     # SQL legacy → dbt
+        │   ├── refactor/        # refactoring avec analyse downstream
+        │   └── test/            # tests et couverture
+        ├── docker-debug/
+        ├── implement-step/
+        ├── security-review/
+        ├── fastapi/             # best practices FastAPI (tiangolo officiel)
+        ├── fastapi-templates/   # structure routes/services/repos, pytest
+        └── shadcn/              # composants shadcn/ui
+```
 
-Subagents: `dbt-reviewer`, `security-reviewer` — use with "use a subagent to..."
+### Skills disponibles (`/skill-name`)
+
+**dbt :** `/dbt` (entry point principal — les sous-dossiers sont des guides de référence)
+
+**infra :** `/implement-step N` · `/docker-debug` · `/security-review`
+
+**frontend/api :** `/fastapi` · `/fastapi-templates` · `/shadcn`
+
+### Subagents
+
+`dbt-reviewer`, `security-reviewer` — invoquer avec "use a subagent to..."
