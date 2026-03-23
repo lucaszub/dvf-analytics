@@ -37,7 +37,7 @@ curl http://localhost:8000/docs
 | ingestion/ (bronze) | ✅ Done |
 | transform/ (dbt Silver + Gold) | ✅ Done |
 | api/ (FastAPI) | ❌ Not started |
-| frontend/ (React) | ❌ Not started |
+| frontend/ (React) | ✅ Done (mock data) |
 | .gitlab-ci.yml | ❌ Not started |
 
 ## Agentic setup
