@@ -48,4 +48,13 @@ Skills available (invoke with `/skill-name`):
 - `/security-review` — security audit (SQL injection, CORS, credentials)
 - `/docker-debug` — debug docker compose stack
 
+dbt lifecycle skills:
+- `/dbt-create-models` — créer/modifier un modèle Silver ou Gold
+- `/dbt-debug` — déboguer une erreur dbt (Compilation/Database/test failure)
+- `/dbt-incremental` — développer un modèle incremental
+- `/dbt-document` — documenter modèles et colonnes dans schema.yml
+- `/dbt-migrate-sql` — convertir du SQL legacy en modèles dbt
+- `/dbt-refactor` — refactorer des modèles avec analyse downstream
+- `/dbt-test` — ajouter ou déboguer des tests dbt
+
 Subagents: `dbt-reviewer`, `security-reviewer` — use with "use a subagent to..."

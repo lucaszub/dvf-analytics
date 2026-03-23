@@ -14,10 +14,10 @@
 
 SELECT
     code_commune,
-    argMax(nom_commune, code_commune)   AS nom_commune,
-    argMax(code_dept, code_commune)     AS code_dept,
-    argMax(longitude, code_commune)     AS longitude,
-    argMax(latitude, code_commune)      AS latitude
+    any(nom_commune)   AS nom_commune,
+    any(code_dept)     AS code_dept,
+    any(longitude)     AS longitude,
+    any(latitude)      AS latitude
 FROM {{ source('bronze', 'raw_communes') }}
 WHERE code_commune IN (
     SELECT DISTINCT code_commune FROM {{ ref('stg_dvf') }}

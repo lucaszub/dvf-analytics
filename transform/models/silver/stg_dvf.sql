@@ -16,10 +16,20 @@
     - nature_mutation = 'Vente' uniquement
     - type_local IN ('Appartement', 'Maison')
     - surface et valeur > 0
-    - prix_m2 entre 500 et 25 000 €/m² (calibré sur données Bretagne)
+    - prix_m2 entre 100 et 50 000 €/m² (conformément à SPEC.md)
 */
 
-WITH mutations_agregees AS (
+WITH filtered AS (
+    SELECT *
+    FROM {{ source('bronze', 'raw_dvf') }}
+    WHERE
+        nature_mutation = 'Vente'
+        AND type_local IN ('Appartement', 'Maison')
+        AND surface_reelle_bati > 0
+        AND valeur_fonciere > 0
+),
+
+mutations_agregees AS (
     SELECT
         id_mutation,
         max(date_mutation)          AS date_mutation,
@@ -31,12 +41,7 @@ WITH mutations_agregees AS (
         max(code_postal)            AS code_postal,
         groupArray(type_local)[1]   AS type_local,
         sum(surface_reelle_bati)    AS surface_totale
-    FROM {{ source('bronze', 'raw_dvf') }}
-    WHERE
-        nature_mutation = 'Vente'
-        AND type_local IN ('Appartement', 'Maison')
-        AND surface_reelle_bati > 0
-        AND valeur_fonciere > 0
+    FROM filtered
     GROUP BY id_mutation
 )
 
@@ -54,4 +59,4 @@ SELECT
     round(valeur_fonciere / surface_totale, 2) AS prix_m2
 FROM mutations_agregees
 WHERE
-    valeur_fonciere / surface_totale BETWEEN 500 AND 25000
+    valeur_fonciere / surface_totale BETWEEN 100 AND 50000

@@ -8,36 +8,83 @@
 
 /*
     Prix médian par département × année × type.
-    Inclut commune_plus_chere et commune_moins_chere via argMax/argMin.
-    Évolution N-1 via CTE self-join.
+    commune_plus_chere / commune_moins_chere basées sur la médiane par commune
+    (et non sur la transaction individuelle la plus haute/basse).
+    Évolution N-1 via lagInFrame.
 */
 
-WITH base AS (
+WITH commune_medians AS (
+    SELECT
+        code_departement,
+        annee,
+        type_local,
+        nom_commune,
+        round(quantile(0.5)(prix_m2), 0) AS prix_median_commune
+    FROM {{ ref('stg_dvf') }}
+    GROUP BY code_departement, annee, type_local, nom_commune
+),
+
+dept_stats AS (
     SELECT
         code_departement,
         annee,
         type_local,
         round(quantile(0.5)(prix_m2), 0)    AS prix_median_m2,
         round(avg(prix_m2), 0)              AS prix_moyen_m2,
-        count()                             AS nb_transactions,
-        argMax(nom_commune, prix_m2)        AS commune_plus_chere,
-        argMin(nom_commune, prix_m2)        AS commune_moins_chere
+        count()                             AS nb_transactions
     FROM {{ ref('stg_dvf') }}
-    GROUP BY
-        code_departement,
-        annee,
-        type_local
+    GROUP BY code_departement, annee, type_local
 ),
 
-with_prev AS (
+commune_extremes AS (
     SELECT
-        curr.*,
-        prev.prix_median_m2 AS prix_median_m2_n1
-    FROM base AS curr
-    LEFT JOIN base AS prev
-        ON curr.code_departement = prev.code_departement
-        AND curr.type_local = prev.type_local
-        AND curr.annee = prev.annee + 1
+        code_departement,
+        annee,
+        type_local,
+        argMax(nom_commune, prix_median_commune) AS commune_plus_chere,
+        argMin(nom_commune, prix_median_commune) AS commune_moins_chere
+    FROM commune_medians
+    GROUP BY code_departement, annee, type_local
+),
+
+base AS (
+    SELECT
+        d.code_departement,
+        d.annee,
+        d.type_local,
+        d.prix_median_m2,
+        d.prix_moyen_m2,
+        d.nb_transactions,
+        e.commune_plus_chere,
+        e.commune_moins_chere
+    FROM dept_stats AS d
+    LEFT JOIN commune_extremes AS e
+        ON d.code_departement = e.code_departement
+        AND d.annee = e.annee
+        AND d.type_local = e.type_local
+),
+
+with_lag AS (
+    SELECT
+        code_departement,
+        annee,
+        type_local,
+        prix_median_m2,
+        prix_moyen_m2,
+        nb_transactions,
+        commune_plus_chere,
+        commune_moins_chere,
+        lagInFrame(prix_median_m2) OVER (
+            PARTITION BY code_departement, type_local
+            ORDER BY annee
+            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+        ) AS prix_median_m2_lag,
+        lagInFrame(annee) OVER (
+            PARTITION BY code_departement, type_local
+            ORDER BY annee
+            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+        ) AS annee_lag
+    FROM base
 )
 
 SELECT
@@ -49,12 +96,12 @@ SELECT
     nb_transactions,
     commune_plus_chere,
     commune_moins_chere,
-    prix_median_m2_n1,
+    if(annee_lag = annee - 1, prix_median_m2_lag, NULL) AS prix_median_m2_n1,
     if(
-        prix_median_m2_n1 > 0,
+        annee_lag = annee - 1 AND prix_median_m2_lag > 0,
         round(
-            (prix_median_m2 - prix_median_m2_n1) / prix_median_m2_n1 * 100, 1
+            (prix_median_m2 - prix_median_m2_lag) / prix_median_m2_lag * 100, 1
         ),
         NULL
     ) AS evolution_pct_n1
-FROM with_prev
+FROM with_lag

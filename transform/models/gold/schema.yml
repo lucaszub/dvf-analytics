@@ -2,73 +2,249 @@ version: 2
 
 models:
   - name: mart_prix_commune
-    description: >
-      Prix médian par commune × année × type. NULL si < 5 transactions.
-      Inclut coordonnées GPS et évolution % N-1.
+    description: |
+      Prix immobiliers agrégés par commune × année × type de bien en Bretagne.
+
+      **Grain :** 1 ligne par (code_commune, annee, type_local).
+
+      **Règles métier :**
+      - `prix_median_m2 = NULL` si moins de 5 transactions (confidentialité statistique).
+        Ces communes apparaissent en gris sur la carte.
+      - Évolution N-1 calculée via `lagInFrame` (window function ClickHouse).
+        `prix_median_m2_n1 = NULL` si l'année précédente n'a pas de données.
+      - Coordonnées GPS jointes depuis stg_communes pour l'affichage cartographique.
+
+      **Utilisation :** carte choroplèthe de l'application frontend.
+
+      **Source :** stg_dvf + stg_communes
     columns:
       - name: code_commune
-        description: Code INSEE commune
+        description: |
+          Code INSEE de la commune (5 caractères).
+          Clé de jointure vers stg_communes.
         tests:
           - not_null
+          - relationships:
+              to: ref('stg_communes')
+              field: code_commune
+
+      - name: nom_commune
+        description: Libellé de la commune (joint depuis stg_communes).
+
+      - name: code_departement
+        description: Département breton (22, 29, 35, 56).
+
       - name: annee
+        description: Année de la transaction (dimension temporelle).
         tests:
           - not_null
+
       - name: type_local
+        description: Type de bien — 'Appartement' ou 'Maison'.
         tests:
           - not_null
           - accepted_values:
               values: ["Appartement", "Maison"]
+
+      - name: prix_median_m2
+        description: |
+          Prix médian au m² en euros pour la commune × année × type.
+          NULL si nb_transactions < 5 (seuil de confidentialité statistique).
+          Calculé via `quantile(0.5)(prix_m2)` sur stg_dvf.
+        tests:
+          - positive_value
+
+      - name: prix_moyen_m2
+        description: Prix moyen au m² en euros (moins robuste que la médiane aux outliers).
+
       - name: nb_transactions
+        description: Nombre de ventes ayant contribué à l'agrégation.
         tests:
           - not_null
+
+      - name: longitude
+        description: Longitude WGS84 du centroïde commune (pour carte).
+
+      - name: latitude
+        description: Latitude WGS84 du centroïde commune (pour carte).
+
+      - name: prix_median_m2_n1
+        description: |
+          Prix médian m² de l'année N-1 pour la même commune × type.
+          NULL si données N-1 absentes ou nb_transactions N-1 < 5.
+
+      - name: evolution_pct_n1
+        description: |
+          Évolution en % du prix médian par rapport à l'année précédente.
+          Formule : `(prix_median_m2 - prix_median_m2_n1) / prix_median_m2_n1 * 100`.
+          NULL si prix_median_m2_n1 est NULL ou nul.
 
   - name: mart_prix_code_postal
-    description: >
-      Prix médian par code postal × année × type. NULL si < 5 transactions.
-      Niveau de drill-down intermédiaire (322 codes postaux en Bretagne).
+    description: |
+      Prix immobiliers agrégés par code postal × année × type de bien.
+
+      **Grain :** 1 ligne par (code_postal, annee, type_local).
+
+      **Règles métier :**
+      - Niveau de drill-down intermédiaire entre commune (trop fin) et département (trop large).
+        322 codes postaux actifs en Bretagne.
+      - `prix_median_m2 = NULL` si moins de 5 transactions.
+      - Mutations sans code postal (champ vide) exclues du calcul.
+      - Évolution N-1 incluse (même logique que les autres marts).
+
+      **Utilisation :** filtre par code postal dans l'interface de recherche.
+
+      **Source :** stg_dvf
     columns:
       - name: code_postal
+        description: Code postal à 5 chiffres (ex 35000 pour Rennes centre).
         tests:
           - not_null
+
+      - name: code_departement
+        description: Département breton (22, 29, 35, 56).
+
       - name: annee
+        description: Année de la transaction.
         tests:
           - not_null
+
       - name: type_local
+        description: Type de bien — 'Appartement' ou 'Maison'.
         tests:
           - not_null
+
+      - name: prix_median_m2
+        description: |
+          Prix médian m² pour le code postal × année × type.
+          NULL si nb_transactions < 5.
+        tests:
+          - positive_value
+
+      - name: prix_moyen_m2
+        description: Prix moyen m² en euros.
+
+      - name: nb_transactions
+        description: Nombre de ventes dans le code postal × année × type.
+
+      - name: prix_median_m2_n1
+        description: Prix médian m² de l'année N-1 (NULL si absent).
+
+      - name: evolution_pct_n1
+        description: Évolution % par rapport à N-1 (NULL si N-1 absent ou nul).
 
   - name: mart_prix_departement
-    description: >
-      Prix médian par département × année × type.
-      Inclut commune la plus chère et la moins chère.
+    description: |
+      Prix immobiliers agrégés par département × année × type de bien.
+
+      **Grain :** 1 ligne par (code_departement, annee, type_local).
+
+      **Règles métier :**
+      - Vue macro sur les 4 départements bretons : Côtes-d'Armor (22),
+        Finistère (29), Ille-et-Vilaine (35), Morbihan (56).
+      - `commune_plus_chere` et `commune_moins_chere` sont calculées sur la
+        **médiane par commune** (argMax/argMin sur prix_median_commune),
+        et non sur une transaction individuelle.
+      - Évolution N-1 via `lagInFrame`.
+
+      **Utilisation :** KPIs de comparaison inter-départements.
+
+      **Source :** stg_dvf
     columns:
       - name: code_departement
-        tests:
-          - not_null
-      - name: annee
-        tests:
-          - not_null
-      - name: prix_median_m2
-        tests:
-          - not_null
-      - name: nb_transactions
+        description: Code du département (22, 29, 35, 56).
         tests:
           - not_null
 
+      - name: annee
+        description: Année de la transaction.
+        tests:
+          - not_null
+
+      - name: type_local
+        description: Type de bien — 'Appartement' ou 'Maison'.
+
+      - name: prix_median_m2
+        description: |
+          Prix médian m² pour le département × année × type.
+          Calculé directement sur les transactions (pas d'agrégation d'agrégations).
+        tests:
+          - not_null
+          - positive_value
+
+      - name: prix_moyen_m2
+        description: Prix moyen m² en euros.
+
+      - name: nb_transactions
+        description: Nombre total de ventes dans le département × année × type.
+        tests:
+          - not_null
+
+      - name: commune_plus_chere
+        description: |
+          Commune avec le prix médian m² le plus élevé dans ce département × année × type.
+          Basé sur la médiane par commune (robuste aux outliers individuels).
+
+      - name: commune_moins_chere
+        description: |
+          Commune avec le prix médian m² le plus bas dans ce département × année × type.
+          Basé sur la médiane par commune.
+
+      - name: prix_median_m2_n1
+        description: Prix médian m² du département pour l'année N-1.
+
+      - name: evolution_pct_n1
+        description: Évolution % du prix médian par rapport à N-1.
+
   - name: mart_prix_bretagne
-    description: >
-      Agrégation Bretagne entière par année × type.
-      Référence pour les KPIs globaux de l'application.
+    description: |
+      Prix immobiliers agrégés pour toute la Bretagne × année × type de bien.
+
+      **Grain :** 1 ligne par (annee, type_local).
+
+      **Règles métier :**
+      - Vue la plus agrégée du pipeline — référence pour les KPIs globaux.
+      - `prix_median_m2` calculé directement sur stg_dvf (pas une médiane de médianes
+        départementales — correct statistiquement).
+      - `nb_communes` : nombre de communes distinctes ayant au moins une transaction.
+      - Évolution N-1 incluse.
+
+      **Utilisation :** headline KPIs du dashboard (bannière supérieure de l'app).
+
+      **Source :** stg_dvf
     columns:
       - name: annee
+        description: Année de la transaction (2019-2024 pour les données DVF Bretagne).
         tests:
           - not_null
+
       - name: type_local
+        description: Type de bien — 'Appartement' ou 'Maison'.
         tests:
           - not_null
+
       - name: prix_median_m2
+        description: |
+          Prix médian m² pour toute la Bretagne × année × type.
+          Calculé via `quantile(0.5)(prix_m2)` sur l'ensemble des transactions,
+          pas comme une agrégation des médianes départementales.
         tests:
           - not_null
+          - positive_value
+
+      - name: prix_moyen_m2
+        description: Prix moyen m² en euros (toute Bretagne).
+
       - name: nb_transactions
+        description: Nombre total de ventes en Bretagne × année × type.
         tests:
           - not_null
+
+      - name: nb_communes
+        description: Nombre de communes distinctes ayant enregistré au moins une vente.
+
+      - name: prix_median_m2_n1
+        description: Prix médian m² breton pour l'année N-1.
+
+      - name: evolution_pct_n1
+        description: Évolution % du prix médian breton par rapport à N-1.
