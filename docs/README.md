@@ -1,35 +1,39 @@
-# DVF Analytics — Pipeline Data Bretagne | Portfolio CGI
+# DVF Analytics — Pipeline Data Bretagne
 
-## Business Case
+## Objectif
 
-La Demande de Valeur Foncière (DVF) est un jeu de données public publié par la DGFiP, recensant l'ensemble des transactions immobilières en France depuis 2018. Ce projet construit un pipeline de données analytiques complet sur ce dataset, en local, avec des outils open-source — et démontre comment la même architecture se déploie nativement sur **Snowflake** en contexte client.
+Ce projet est un terrain d'apprentissage pratique autour de la **data engineering** et de l'**IA appliquée au développement**. Il s'appuie sur un dataset public réel pour construire un pipeline de bout en bout — de l'ingestion brute jusqu'à la visualisation — en utilisant des outils open-source proches de ce qu'on retrouve en contexte professionnel.
 
-> **Objectif** : prouver qu'un pipeline data de niveau production — testé, documenté, versionné — peut être livré rapidement avec les bons outils et les bonnes pratiques, jusqu'à une visualisation cartographique interactive. Ce projet sert de **démonstrateur technique** pour un atelier interne CGI.
+L'idée n'est pas de livrer un produit fini, mais d'**apprendre en faisant** : comprendre comment les couches d'un pipeline data s'articulent, comment l'IA peut accélérer chaque étape, et comment les bonnes pratiques (tests, documentation, linting, CI) se mettent concrètement en place.
 
 ---
 
-## Contexte & Pertinence
+## Dataset — Pourquoi DVF ?
 
-### Pourquoi DVF ?
+La Demande de Valeur Foncière (DVF) est un jeu de données public publié par la DGFiP, recensant l'ensemble des transactions immobilières en France depuis 2018.
 
-- Données publiques, réelles, volumineuses (~10M transactions sur la période)
+- Données réelles, volumineuses (~10M transactions nationales)
 - Problématiques concrètes : qualité de données, jointures géographiques, agrégations hiérarchiques
-- Sujet parlant pour n'importe quel interlocuteur (immobilier, territoires, décision publique)
-- Directement transposable à des cas clients CGI (collectivités, DGITM, data publique)
+- Périmètre Bretagne choisi pour rester maîtrisable (~354k transactions, 4 départements)
 
-### Pourquoi Bretagne ?
+---
 
-- Périmètre maîtrisé (~200k transactions) pour une démo rapide et propre
-- Hiérarchie géographique complète : **Bretagne → 4 départements → communes → codes postaux**
-- Suffisant pour illustrer toutes les transformations sans surcharger la démo
+## Ce qu'on apprend ici
 
-### Transférabilité Snowflake
+### Data Engineering
 
-Toute la couche de transformation est écrite en **dbt**. Passer de ClickHouse à Snowflake = changer le profil de connexion dans `profiles.yml`. La logique SQL, les tests, la documentation — tout est identique.
+- Construire un pipeline **medallion** (Bronze → Silver → Gold) sur des données réelles
+- Utiliser **dbt** pour la transformation : modèles SQL testés, documentés, versionnés
+- Orchestrer des services avec **Docker Compose** (ClickHouse, ingestion, API, frontend)
+- Comprendre **ClickHouse** comme moteur OLAP columnar (analogue à Snowflake/BigQuery)
+- Appliquer les standards qualité dès le local : tests dbt, SQLFluff, CI/CD
 
-```
-Local (ClickHouse)  ──▶  même dbt project  ──▶  Prod (Snowflake / BigQuery / Redshift)
-```
+### IA & Dev Velocity
+
+- Utiliser **Claude** (via Claude Code) comme copilote sur l'ensemble du projet : génération de modèles dbt, endpoints FastAPI, composants React, tests
+- Travailler avec un **SPEC.md comme source de vérité** — écrire la spec d'abord, coder ensuite avec l'IA
+- Comprendre comment bien prompter pour obtenir du code production-ready (contexte, contraintes, exemples)
+- Mesurer ce que l'IA accélère réellement et où elle crée de la dette technique si mal utilisée
 
 ---
 
@@ -39,18 +43,18 @@ Local (ClickHouse)  ──▶  même dbt project  ──▶  Prod (Snowflake / B
 
 | Couche | Outil | Rôle |
 |---|---|---|
-| Ingestion | Script Python | Téléchargement DVF + COG INSEE, chargement ClickHouse |
-| Stockage | ClickHouse (Docker) | Moteur OLAP columnar, analogue à Snowflake |
+| Ingestion | Python | Téléchargement DVF + GeoJSON communes, chargement ClickHouse |
+| Stockage | ClickHouse (Docker) | Moteur OLAP columnar |
 | Transformation | dbt-clickhouse | Medallion architecture, tests, documentation |
-| Qualité | SQLFluff + pre-commit | Lint SQL automatique |
+| Qualité SQL | SQLFluff + pre-commit | Lint automatique sur commit |
 | CI | GitLab CI | dbt build + tests à chaque push |
-| API données | FastAPI | Exposition des agrégats gold vers le front |
-| Visualisation | Frontend custom (React + Deck.gl) | Carte choroplèthe interactive, filtres dynamiques |
+| API | FastAPI | Exposition des agrégats gold |
+| Visualisation | React + Deck.gl + Recharts | Carte interactive, filtres dynamiques |
 
-### Schéma de Pipeline
+### Pipeline
 
 ```
-[data.gouv.fr — DVF CSV]  +  [INSEE COG — GeoJSON communes]
+[data.gouv.fr — DVF CSV]  +  [geo.api.gouv.fr — GeoJSON communes]
             │
             ▼  python ingest.py
     ┌───────────────────┐
@@ -70,117 +74,54 @@ Local (ClickHouse)  ──▶  même dbt project  ──▶  Prod (Snowflake / B
     │                   │  mart_prix_departement
     │                   │  mart_evolution_annuelle
     └───────┬───────────┘
-            │
-            ▼  FastAPI
+            │  FastAPI
+            ▼
     ┌───────────────────┐
-    │   Frontend React  │
-    │   + Deck.gl       │  Carte choroplèthe interactive
-    │                   │  Filtres : dept / type / année
+    │   Frontend React  │  Carte choroplèthe + filtres dept / type / année
     └───────────────────┘
 ```
 
 ### Medallion Architecture
 
-**Bronze** — données brutes chargées telles quelles depuis la source officielle, sans transformation.
+**Bronze** — données brutes chargées telles quelles depuis la source, sans transformation.
 
-**Silver** — nettoyage, typage fort, jointure géographique avec le Code Officiel Géographique INSEE. C'est ici qu'on élimine les outliers, qu'on standardise les types de biens, et qu'on enrichit chaque transaction avec ses coordonnées.
+**Silver** — nettoyage, typage fort, jointure géographique. Élimination des outliers, standardisation des types de biens, enrichissement avec coordonnées GPS.
 
-**Gold** — modèles analytiques prêts à la consommation : prix médian par commune, par département, évolution annuelle, volume de transactions. Ces tables sont exposées via FastAPI et consommées par le frontend.
+**Gold** — agrégats prêts à consommer : prix médian par commune, par département, évolution annuelle. Exposés via FastAPI, consommés par le frontend.
 
----
+### Transférabilité cloud
 
-## Bonnes Pratiques Démontrées
-
-### Qualité de données — Tests dbt
-
-- `not_null` et `unique` sur toutes les clés
-- `relationships` entre les couches (silver → gold)
-- Tests custom : prix cohérents (> 0), surface non nulle, code commune valide
-
-### Documentation auto-générée
-
-Chaque modèle dbt dispose d'une description, chaque colonne est documentée dans le `schema.yml`. Le `dbt docs generate` produit un site de documentation navigable — équivalent d'un Data Catalog léger.
-
-### Lint SQL — SQLFluff
-
-Règle de style SQL uniforme appliquée via pre-commit hook. Chaque commit valide automatiquement la cohérence syntaxique des modèles.
-
-### CI/CD — GitLab CI
-
-À chaque push sur `main` : dbt build complet + tous les tests. Pipeline visible, traçable, reproductible par n'importe quel membre de l'équipe.
-
----
-
-## Analyse Géographique
-
-### Hiérarchie des granularités
+Toute la couche de transformation est en **dbt**. Passer de ClickHouse à Snowflake = changer le profil de connexion dans `profiles.yml`. La logique SQL, les tests, la documentation — tout est identique.
 
 ```
-France
-  └── Bretagne
-        ├── Côtes-d'Armor (22)
-        ├── Finistère (29)
-        ├── Ille-et-Vilaine (35)   ← focus Rennes
-        └── Morbihan (56)
-              └── Communes
-                    └── Codes postaux
+Local (ClickHouse)  ──▶  même dbt project  ──▶  Prod (Snowflake / BigQuery / Redshift)
 ```
-
-### Indicateurs clés affichés sur la carte
-
-- **Prix médian au m²** par commune (couleur choroplèthe)
-- **Volume de transactions** par département et par année
-- **Évolution annuelle** des prix (2018 → 2024)
-- **Distribution des types de biens** : appartements vs maisons
-- **Spread prix** : écart entre les communes les moins et les plus chères
 
 ---
 
-## Roadmap Projet
+## Roadmap
 
-### Étape 1 — Infrastructure & Ingestion
-
-- Setup ClickHouse via Docker Compose
+### Étape 1 — Infrastructure & Ingestion ✅
+- ClickHouse via Docker Compose
 - Script `ingest.py` : téléchargement + chargement bronze
-- Chargement COG INSEE communes + GeoJSON
-- Modèles bronze validés
+- Bronze validé (~354k lignes)
 
 ### Étape 2 — Transformation dbt
-
 - Modèles silver : nettoyage, typage, jointure géo
 - Modèles gold : agrégats prix commune + département
-- Tests dbt complets
-- Documentation `schema.yml`
+- Tests dbt + documentation `schema.yml`
 
 ### Étape 3 — API & Visualisation
-
-- FastAPI : endpoints gold → JSON consommable par le front
-- Frontend React : carte choroplèthe + filtres dynamiques
+- FastAPI : endpoints gold → JSON
+- Frontend React : carte + filtres dynamiques
 - GitLab CI opérationnel
-- `SPEC.md` + `README.md` finalisés
 
 ---
-
-## Ce que ce projet démontre
-
-> Pour un profil **Data Engineer / Solution Architect**, ce projet illustre la capacité à :
-> - Concevoir une architecture data de bout en bout (ingestion → transformation → API → frontend)
-> - Appliquer les standards production dès le développement local
-> - Rendre le pipeline reproductible et transférable (cloud-agnostic via dbt)
-> - Documenter et tester rigoureusement chaque couche de transformation
-> - Livrer un résultat visuel concret et interactif sur des données réelles et publiques
-
----
-
-## Liens
-
-- GitLab : *à renseigner*
-- Dashboard carte : *à renseigner après déploiement*
-- dbt Docs : *à renseigner*
 
 ## Pages du projet
 
-- [SPEC.md](./SPEC.md)
+- [SPEC.md](./SPEC.md) — spécification technique complète
+- [PLAN.md](./PLAN.md) — roadmap détaillée par étape
 - [User Stories](./user-stories.md)
-- [Prompt Maquette Frontend](./prompt-maquette-frontend.md)
 - [Base de code Frontend](./base-code-frontend.md)
+- [Prompt Maquette Frontend](./prompt-maquette-frontend.md)
