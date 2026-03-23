@@ -4,7 +4,10 @@ build:
 	$(NOPROXY) docker compose build
 
 up:
-	$(NOPROXY) docker compose up
+	$(NOPROXY) docker compose up -d
+
+logs:
+	docker compose logs -f
 
 up-d:
 	$(NOPROXY) docker compose up -d
