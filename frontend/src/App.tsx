@@ -1,13 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Header } from './components/Header'
 import { Map } from './components/Map'
 import { Sidebar } from './components/Sidebar'
-import { rawData } from './data/mockData'
-import type { Filters, DeptStats, KpiData, TypeStat, DistBucket, DeptCode } from './types'
+import {
+  fetchCommunes,
+  fetchKpis,
+  fetchHistorique,
+  fetchCodePostaux,
+  fetchMutations,
+} from './data/api'
+import type { CommuneResponse, KpisResponse, HistoriquePoint, CodePostalResponse, MutationResponse } from './data/api'
+import type { Filters, DeptCode } from './types'
+import type { FeatureCollection } from 'geojson'
 import { DEPT_NOMS } from './types'
-
-const DEPT_CODES: DeptCode[] = ['22', '29', '35', '56']
-const TYPES_BIEN = ['Maison', 'Appartement', 'Terrain'] as const
 
 const DEFAULT_FILTERS: Filters = {
   departement: 'all',
@@ -15,116 +20,212 @@ const DEFAULT_FILTERS: Filters = {
   annee: 'all',
 }
 
-function computeDeptStats(filters: Filters): DeptStats[] {
-  return DEPT_CODES.map(code => {
-    const rows = rawData.filter(r => {
-      if (r.dept !== code) return false
-      if (filters.typeBien !== 'all' && r.type !== filters.typeBien) return false
-      if (filters.annee !== 'all' && r.annee !== filters.annee) return false
-      return true
-    })
-    if (rows.length === 0)
-      return { code, nom: DEPT_NOMS[code], prixMedian: 0, nbTransactions: 0 }
-    const prixMedian = Math.round(rows.reduce((s, r) => s + r.prixMedian, 0) / rows.length)
-    const nbTransactions = rows.reduce((s, r) => s + r.nbTransactions, 0)
-    return { code, nom: DEPT_NOMS[code], prixMedian, nbTransactions }
-  })
-}
-
-function computeEvolution(filters: Filters): { annee: number; prix: number }[] {
-  return [2018, 2019, 2020, 2021, 2022, 2023, 2024].map(annee => {
-    const rows = rawData.filter(r => {
-      if (r.annee !== annee) return false
-      if (filters.departement !== 'all' && r.dept !== filters.departement) return false
-      if (filters.typeBien !== 'all' && r.type !== filters.typeBien) return false
-      return true
-    })
-    const prix = rows.length
-      ? Math.round(rows.reduce((s, r) => s + r.prixMedian, 0) / rows.length)
-      : 0
-    return { annee, prix }
-  })
-}
-
-function computeTypeStats(filters: Filters): TypeStat[] {
-  return TYPES_BIEN.map(type => {
-    const rows = rawData.filter(r => {
-      if (r.type !== type) return false
-      if (filters.departement !== 'all' && r.dept !== filters.departement) return false
-      if (filters.annee !== 'all' && r.annee !== filters.annee) return false
-      return true
-    })
-    if (rows.length === 0) return { type, ventes: 0, prixMedian: 0 }
-    return {
-      type,
-      ventes: rows.reduce((s, r) => s + r.nbTransactions, 0),
-      prixMedian: Math.round(rows.reduce((s, r) => s + r.prixMedian, 0) / rows.length),
-    }
-  })
-}
-
-// Répartition des transactions par tranche de prix
-function computeDistribution(filters: Filters): DistBucket[] {
-  const buckets = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]
-  const counts = new Array(buckets.length + 1).fill(0)
-
-  rawData
-    .filter(r => {
-      if (filters.departement !== 'all' && r.dept !== filters.departement) return false
-      if (filters.typeBien !== 'all' && r.type !== filters.typeBien) return false
-      if (filters.annee !== 'all' && r.annee !== filters.annee) return false
-      return true
-    })
-    .forEach(r => {
-      const idx = buckets.findIndex(b => r.prixMedian < b)
-      counts[idx === -1 ? buckets.length : idx] += r.nbTransactions
-    })
-
-  return buckets.map((b, i) => ({
-    label: i === 0 ? `< ${b}` : `${buckets[i - 1]}–${b}`,
-    count: counts[i],
-  })).concat([{ label: `> ${buckets[buckets.length - 1]}`, count: counts[buckets.length] }])
-    .filter(b => b.count > 0)
-}
-
-function computeKpis(deptStats: DeptStats[]): KpiData {
-  const valid = deptStats.filter(d => d.prixMedian > 0)
-  const prixMoyen = valid.length
-    ? Math.round(valid.reduce((s, d) => s + d.prixMedian, 0) / valid.length)
-    : 0
-  const moinsCher = valid.reduce((a, b) => (a.prixMedian <= b.prixMedian ? a : b), valid[0])
-  return {
-    prixMedianBretagne: prixMoyen,
-    nbTransactionsTotal: deptStats.reduce((s, d) => s + d.nbTransactions, 0),
-    deptMoinsCher: moinsCher
-      ? { code: moinsCher.code, nom: moinsCher.nom, prix: moinsCher.prixMedian }
-      : { code: '22', nom: DEPT_NOMS['22'], prix: 0 },
-  }
+const BUTTON_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 12px',
+  background: '#ffffff',
+  border: '1px solid #e4e4e7',
+  borderRadius: 6,
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#09090b',
+  cursor: 'pointer',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
 }
 
 export default function App() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
 
-  const deptStats    = useMemo(() => computeDeptStats(filters), [filters])
-  const kpis         = useMemo(() => computeKpis(deptStats), [deptStats])
-  const evolution    = useMemo(() => computeEvolution(filters), [filters])
-  const typeStats    = useMemo(() => computeTypeStats(filters), [filters])
-  const distribution = useMemo(() => computeDistribution(filters), [filters])
+  const [communes, setCommunes] = useState<CommuneResponse[]>([])
+  const [kpis, setKpis] = useState<KpisResponse | null>(null)
+  const [historique, setHistorique] = useState<HistoriquePoint[]>([])
+  const [selectedCommune, setSelectedCommune] = useState<CommuneResponse | null>(null)
+  const [codePostaux, setCodePostaux] = useState<CodePostalResponse[]>([])
+
+  const [communeGeoJSON, setCommuneGeoJSON] = useState<FeatureCollection | null>(null)
+
+  const [mutations, setMutations] = useState<MutationResponse[]>([])
+  const [loadingMutations, setLoadingMutations] = useState(false)
+
+  const [loadingMap, setLoadingMap] = useState(false)
+  const [loadingKpis, setLoadingKpis] = useState(false)
+  const [loadingCP, setLoadingCP] = useState(false)
+  const [geoLoading, setGeoLoading] = useState(false)
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch communes + KPIs whenever any filter changes
+  useEffect(() => {
+    setLoadingMap(true)
+    setLoadingKpis(true)
+    setError(null)
+
+    Promise.all([
+      fetchCommunes({
+        dept: filters.departement,
+        type: filters.typeBien,
+        annee: filters.annee,
+      }),
+      fetchKpis({
+        dept: filters.departement,
+        type: filters.typeBien,
+        annee: filters.annee,
+      }),
+    ])
+      .then(([communesData, kpisData]) => {
+        setCommunes(communesData)
+        setKpis(kpisData)
+      })
+      .catch(err => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        setLoadingMap(false)
+        setLoadingKpis(false)
+      })
+  }, [filters])
+
+  // Fetch historique when dept or type changes (no annee — it covers all years)
+  useEffect(() => {
+    fetchHistorique({
+      dept: filters.departement,
+      type: filters.typeBien,
+    })
+      .then(setHistorique)
+      .catch(err => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [filters.departement, filters.typeBien])
+
+  // When dept filter changes, clear commune selection
+  useEffect(() => {
+    setSelectedCommune(null)
+  }, [filters.departement])
+
+  // Load commune GeoJSON from local public files when dept is selected
+  useEffect(() => {
+    if (filters.departement === 'all') {
+      setCommuneGeoJSON(null)
+      return
+    }
+    setGeoLoading(true)
+    fetch(`/geo/communes-${filters.departement}.geojson`)
+      .then(r => r.json())
+      .then(geoJson => setCommuneGeoJSON(geoJson as FeatureCollection))
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setGeoLoading(false))
+  }, [filters.departement])
+
+  // Filter codePostaux to only those belonging to the selected commune (via GeoJSON mapping)
+  const communeFilteredCP = useMemo(() => {
+    if (!selectedCommune || !communeGeoJSON || codePostaux.length === 0) return []
+    const feature = communeGeoJSON.features.find(
+      f => f.properties?.code === selectedCommune.id
+    )
+    const cpCodes = (feature?.properties?.codesPostaux as string[]) ?? []
+    return codePostaux.filter(cp => cpCodes.includes(cp.code))
+  }, [selectedCommune, communeGeoJSON, codePostaux])
+
+  // Fetch code postaux when a commune is selected
+  useEffect(() => {
+    if (!selectedCommune) {
+      setCodePostaux([])
+      return
+    }
+    setLoadingCP(true)
+    fetchCodePostaux({
+      dept: selectedCommune.departmentCode as DeptCode,
+      type: filters.typeBien,
+      annee: filters.annee,
+    })
+      .then(setCodePostaux)
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoadingCP(false))
+  }, [selectedCommune, filters.typeBien, filters.annee])
+
+  // Fetch individual mutations when a commune is selected
+  useEffect(() => {
+    if (!selectedCommune) {
+      setMutations([])
+      return
+    }
+    setLoadingMutations(true)
+    fetchMutations({
+      commune: selectedCommune.id,
+      type: filters.typeBien,
+      annee: filters.annee,
+    })
+      .then(setMutations)
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoadingMutations(false))
+  }, [selectedCommune, filters.typeBien, filters.annee])
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <Header filters={filters} onChange={setFilters} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
+          communes={communes}
           kpis={kpis}
-          deptStats={deptStats}
-          evolution={evolution}
-          typeStats={typeStats}
-          distribution={distribution}
+          historique={historique}
+          loading={loadingKpis}
+          loadingCP={loadingCP}
           filters={filters}
+          selectedCommune={selectedCommune}
+          codePostaux={communeFilteredCP}
         />
         <main className="flex-1 relative overflow-hidden">
-          <Map deptStats={deptStats} filters={filters} />
+          {/* Breadcrumb navigation — rendered above the map to avoid Leaflet event capture */}
+          <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 2000, display: 'flex', gap: 8, alignItems: 'center' }}>
+            {filters.departement !== 'all' && !selectedCommune && (
+              <button
+                style={BUTTON_STYLE}
+                onClick={() => setFilters(f => ({ ...f, departement: 'all' }))}
+              >
+                ← Bretagne
+              </button>
+            )}
+            {selectedCommune && (
+              <>
+                <button
+                  style={BUTTON_STYLE}
+                  onClick={() => {
+                    setSelectedCommune(null)
+                    setFilters(f => ({ ...f, departement: 'all' }))
+                  }}
+                >
+                  ← Bretagne
+                </button>
+                <span style={{ color: '#a1a1aa', fontSize: 13 }}>/</span>
+                <button
+                  style={BUTTON_STYLE}
+                  onClick={() => setSelectedCommune(null)}
+                >
+                  ← {DEPT_NOMS[selectedCommune.departmentCode as DeptCode]}
+                </button>
+              </>
+            )}
+          </div>
+
+          <Map
+            communes={communes}
+            codePostaux={codePostaux}
+            communeGeoJSON={communeGeoJSON}
+            selectedDept={filters.departement}
+            selectedCommune={selectedCommune}
+            onDeptSelect={dept => {
+              setSelectedCommune(null)
+              setFilters(f => ({ ...f, departement: dept }))
+            }}
+            onCommuneSelect={setSelectedCommune}
+            filters={{ annee: filters.annee, typeBien: filters.typeBien }}
+            loading={loadingMap || loadingCP || geoLoading}
+            mutations={mutations}
+            loadingMutations={loadingMutations}
+          />
         </main>
       </div>
     </div>

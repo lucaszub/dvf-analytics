@@ -178,12 +178,14 @@ ORDER BY code_commune;
 
 ## Silver — `stg_dvf`
 
-**Transformations :**
+**Transformations (méthodologie officielle data.gouv.fr) :**
 
+- Filtre `nature_mutation IN ('Vente', 'Vente en l'état futur d'achèvement', 'Adjudication')`
+- Filtre bien unique par mutation (hors dépendances) — mutations multi-biens exclues
+- Filtre type : `type_local IN ('Appartement', 'Maison')`
 - Filtre `valeur_fonciere > 0` et `surface_reelle_bati > 0`
 - Calcul `prix_m2 = valeur_fonciere / surface_reelle_bati`
-- Filtre outliers : `prix_m2` entre 100 et 50 000 €
-- Filtre type : `type_local IN ('Appartement', 'Maison')`
+- Filtre outliers : `prix_m2 <= 100 000 €/m²` (seuil officiel)
 - Extraction `annee = toYear(date_mutation)`
 
 **Colonnes output :**

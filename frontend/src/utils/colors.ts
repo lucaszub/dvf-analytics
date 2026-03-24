@@ -1,3 +1,17 @@
+// Fixed price scale calibrated for Bretagne (€/m²)
+// Mirrors explore.data.gouv.fr color conventions: green → yellow → orange → red
+const STOPS: Array<[number, string]> = [
+  [0,    '#1a9641'],  // deep green   — < 1000
+  [1000, '#78c679'],  // green
+  [1500, '#c2e699'],  // light green
+  [2000, '#ffffbf'],  // yellow
+  [2500, '#fee08b'],  // light orange
+  [3000, '#fdae61'],  // orange
+  [3500, '#f46d43'],  // orange-red
+  [4500, '#d73027'],  // red
+  [6000, '#a50026'],  // dark red
+]
+
 function lerp(a: number, b: number, t: number): number {
   return Math.round(a + (b - a) * t)
 }
@@ -11,16 +25,20 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`
 }
 
-// Blue → Amber → Red (standard heatmap, lisible sur fond clair)
-const LOW  = '#3b82f6'
-const MID  = '#f59e0b'
-const HIGH = '#ef4444'
+/** Fixed-scale color for a price per m² — same color meaning across all zoom levels. */
+export function priceColor(prix: number): string {
+  if (prix <= 0) return '#cccccc'
 
-export function priceColor(prix: number, min: number, max: number): string {
-  if (max === min) return MID
-  const t = Math.max(0, Math.min(1, (prix - min) / (max - min)))
-  const [r1, g1, b1] = t < 0.5 ? hexToRgb(LOW)  : hexToRgb(MID)
-  const [r2, g2, b2] = t < 0.5 ? hexToRgb(MID)  : hexToRgb(HIGH)
-  const t2 = t < 0.5 ? t * 2 : (t - 0.5) * 2
-  return rgbToHex(lerp(r1, r2, t2), lerp(g1, g2, t2), lerp(b1, b2, t2))
+  for (let i = STOPS.length - 1; i >= 0; i--) {
+    if (prix >= STOPS[i][0]) {
+      if (i === STOPS.length - 1) return STOPS[i][1]
+      const [lo, colorLo] = STOPS[i]
+      const [hi, colorHi] = STOPS[i + 1]
+      const t = (prix - lo) / (hi - lo)
+      const [r1, g1, b1] = hexToRgb(colorLo)
+      const [r2, g2, b2] = hexToRgb(colorHi)
+      return rgbToHex(lerp(r1, r2, t), lerp(g1, g2, t), lerp(b1, b2, t))
+    }
+  }
+  return STOPS[0][1]
 }

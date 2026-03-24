@@ -8,25 +8,48 @@
 }}
 
 /*
-    Agrégation par mutation : une vente DVF génère N lignes (une par lot).
-    On agrège d'abord pour avoir une ligne par mutation avec la surface totale,
-    puis on calcule prix_m2 = valeur_fonciere / surface_totale.
+    Filtres alignés sur la méthodologie officielle statistiques DVF (data.gouv.fr) :
 
-    Filtres appliqués :
-    - nature_mutation = 'Vente' uniquement
-    - type_local IN ('Appartement', 'Maison')
-    - surface et valeur > 0
-    - prix_m2 entre 100 et 50 000 €/m² (conformément à SPEC.md)
+    1. nature_mutation : Vente + VEFA + Adjudication (hors expropriation, échange)
+    2. Bien unique par mutation hors dépendances — mutations multi-biens exclues
+       (impossible d'attribuer la valeur foncière à chaque bien séparément)
+    3. type_local IN ('Appartement', 'Maison')
+    4. prix_m2 calculable (surface > 0) et <= 100 000 €/m² (seuil officiel)
 */
 
-WITH filtered AS (
+WITH nature_filter AS (
     SELECT *
     FROM {{ source('bronze', 'raw_dvf') }}
     WHERE
-        nature_mutation = 'Vente'
-        AND type_local IN ('Appartement', 'Maison')
-        AND surface_reelle_bati > 0
+        nature_mutation IN (
+            'Vente',
+            'Vente en l''état futur d''achèvement',
+            'Adjudication'
+        )
         AND valeur_fonciere > 0
+),
+
+-- Compte le nombre de biens principaux (hors dépendances) par mutation
+mutation_bien_count AS (
+    SELECT
+        id_mutation,
+        countIf(type_local != 'Dépendance') AS nb_biens_principaux
+    FROM nature_filter
+    GROUP BY id_mutation
+),
+
+-- Garde uniquement les mutations à bien unique, type résidentiel, surface renseignée
+filtered AS (
+    SELECT n.*
+    FROM nature_filter AS n
+    WHERE
+        n.id_mutation IN (
+            SELECT id_mutation
+            FROM mutation_bien_count
+            WHERE nb_biens_principaux = 1
+        )
+        AND n.type_local IN ('Appartement', 'Maison')
+        AND n.surface_reelle_bati > 0
 ),
 
 mutations_agregees AS (
@@ -40,7 +63,9 @@ mutations_agregees AS (
         max(code_departement)       AS code_departement,
         max(code_postal)            AS code_postal,
         groupArray(type_local)[1]   AS type_local,
-        sum(surface_reelle_bati)    AS surface_totale
+        sum(surface_reelle_bati)    AS surface_totale,
+        max(longitude)              AS longitude,
+        max(latitude)               AS latitude
     FROM filtered
     GROUP BY id_mutation
 )
@@ -48,15 +73,17 @@ mutations_agregees AS (
 SELECT
     id_mutation,
     date_mutation,
-    toYear(date_mutation)           AS annee,
+    toYear(date_mutation)               AS annee,
     code_commune,
     nom_commune,
     code_departement,
     code_postal,
     type_local,
-    surface_totale                  AS surface_reelle_bati,
+    surface_totale                      AS surface_reelle_bati,
     valeur_fonciere,
-    round(valeur_fonciere / surface_totale, 2) AS prix_m2
+    round(valeur_fonciere / surface_totale, 2) AS prix_m2,
+    longitude,
+    latitude
 FROM mutations_agregees
 WHERE
-    valeur_fonciere / surface_totale BETWEEN 100 AND 50000
+    valeur_fonciere / surface_totale <= 100000

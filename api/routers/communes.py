@@ -41,23 +41,29 @@ def list_communes(
 
 
 def _from_gold(client, dept, type_local, annee) -> list[CommuneResponse]:
+    # Without a year filter the gold table returns one row per (commune × year × type),
+    # producing duplicates on the map. Default to the latest available year.
+    if not annee:
+        row = next(
+            client.query("SELECT max(annee) AS y FROM gold.mart_prix_commune").named_results()
+        )
+        annee = int(row["y"])
+
     conditions = [
         "prix_median_m2 IS NOT NULL",
         "longitude IS NOT NULL",
         "latitude IS NOT NULL",
         "longitude != 0",
         "latitude != 0",
+        "annee = {annee:UInt16}",
     ]
-    params: dict = {}
+    params: dict = {"annee": annee}
     if dept:
         conditions.append("code_departement = {dept:String}")
         params["dept"] = dept
     if type_local:
         conditions.append("type_local = {type_local:String}")
         params["type_local"] = type_local
-    if annee:
-        conditions.append("annee = {annee:UInt16}")
-        params["annee"] = annee
 
     query = f"""
         SELECT
@@ -127,3 +133,37 @@ def _to_commune(r: dict) -> CommuneResponse:
         evolution=float(r["evolution_pct_n1"]) if r["evolution_pct_n1"] is not None else None,
         coordinates=(float(r["longitude"]), float(r["latitude"])),
     )
+
+
+class CommuneMapping(BaseModel):
+    code_commune: str
+    code_postal: str
+    nom_commune: str
+
+
+@router.get("/mapping")
+def get_commune_mapping(
+    client: ClientDep,
+    dept: Annotated[str, Query(pattern="^(22|29|35|56)$")],
+) -> list[CommuneMapping]:
+    """Returns majority code_postal per commune for the given department."""
+    query = """
+        SELECT
+            code_commune,
+            anyHeavy(code_postal) AS cp_principal,
+            any(nom_commune) AS nom_commune
+        FROM silver.stg_dvf
+        WHERE code_departement = {dept:String}
+          AND code_postal != ''
+        GROUP BY code_commune
+        ORDER BY code_commune
+    """
+    rows = client.query(query, parameters={"dept": dept}).named_results()
+    return [
+        CommuneMapping(
+            code_commune=r["code_commune"],
+            code_postal=r["cp_principal"],
+            nom_commune=r["nom_commune"],
+        )
+        for r in rows
+    ]

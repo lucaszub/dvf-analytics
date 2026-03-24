@@ -2,3 +2,5 @@ transform/profiles.yml
 __pycache__/
 *.pyc
 .pytest_cache/
+image.png
+image1.png

@@ -1,5 +1,6 @@
 export type DeptCode = '22' | '29' | '35' | '56'
 export type TypeBien = 'Maison' | 'Appartement' | 'Terrain'
+export type ApiStatus = 'idle' | 'loading' | 'error' | 'success'
 
 export interface Filters {
   departement: DeptCode | 'all'

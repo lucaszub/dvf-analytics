@@ -7,12 +7,12 @@ models:
 
       **Grain :** 1 ligne par id_mutation (une vente peut couvrir plusieurs lots dans le bronze).
 
-      **Règles métier :**
-      - Filtré sur `nature_mutation = 'Vente'` uniquement (hors donations, échanges, etc.)
+      **Règles métier (alignées méthodologie officielle data.gouv.fr) :**
+      - `nature_mutation IN ('Vente', 'Vente en l''état futur d''achèvement', 'Adjudication')`
+      - Mutations à bien unique hors dépendances uniquement (multi-biens exclus)
       - Restreint aux biens résidentiels : `type_local IN ('Appartement', 'Maison')`
-      - Agrégation multi-lots : plusieurs lignes bronze (un lot = une ligne) sont consolidées
-        en une seule mutation via `sum(surface_reelle_bati)`
-      - Outliers exclus : `prix_m2 BETWEEN 100 AND 50000 €/m²`
+      - Agrégation multi-lots : plusieurs lignes bronze consolidées via `sum(surface_reelle_bati)`
+      - Outliers exclus : `prix_m2 <= 100 000 €/m²` (seuil officiel DVF)
       - Surface et valeur foncière nulles ou négatives exclues
 
       **Calcul prix_m2 :** `valeur_fonciere / sum(surface_reelle_bati)` par mutation
@@ -84,7 +84,7 @@ models:
         description: |
           Prix au m² en euros, arrondi à 2 décimales.
           Formule : `round(valeur_fonciere / surface_reelle_bati, 2)`.
-          NULL impossible (outliers filtrés à 100-50000 €/m²).
+          NULL impossible (outliers filtrés à <= 100 000 €/m²).
         tests:
           - not_null
 

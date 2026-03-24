@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import communes, departements, kpis
+from routers import communes, code_postaux, departements, kpis, h3_cells
+from routers.mutations import router as mutations_router
 
 app = FastAPI(
     title="DVF Analytics API",
@@ -17,5 +18,8 @@ app.add_middleware(
 )
 
 app.include_router(communes.router)
+app.include_router(code_postaux.router)
 app.include_router(departements.router)
 app.include_router(kpis.router)
+app.include_router(h3_cells.router)
+app.include_router(mutations_router)
