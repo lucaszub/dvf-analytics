@@ -7,10 +7,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/communes': 'http://localhost:8000',
-      '/departements': 'http://localhost:8000',
-      '/bretagne': 'http://localhost:8000',
-      '/h3': 'http://localhost:8000',
+      '/communes': 'http://api:8000',
+      '/departements': 'http://api:8000',
+      '/bretagne': 'http://api:8000',
+      '/h3': 'http://api:8000',
     },
   },
   resolve: {

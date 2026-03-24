@@ -16,6 +16,6 @@ down:
 	docker compose down
 
 reset:
-	docker compose down -v && $(NOPROXY) docker compose up
+	docker compose down -v && $(NOPROXY) docker compose up -d
 
 .PHONY: build up up-d down reset

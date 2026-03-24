@@ -52,6 +52,19 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-
+  
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    environment:
+      VITE_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_started
 volumes:
   clickhouse-data:
