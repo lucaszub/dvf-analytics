@@ -30,6 +30,16 @@ services:
       ingest:
         condition: service_completed_successfully
 
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    depends_on:
+      dbt:
+        condition: service_completed_successfully
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+
   dbt-docs:
     build: ./transform
     command: >
@@ -42,18 +52,6 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-
-  metabase:
-    image: metabase/metabase:latest
-    ports:
-      - "3001:3000"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    restart: always
 
 volumes:
   clickhouse-data:
