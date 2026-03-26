@@ -1,12 +1,7 @@
----
-paths: transform/**
----
-# Rules — dbt / ClickHouse (transform/)
+# Rules — transform/
 
-- ClickHouse SQL dialect: `quantile(0.5)(col)` for median, `toYear(date)` for year extraction, `argMax(col, order)` for value at max
-- Never use ANSI SQL functions not supported in ClickHouse (`PERCENTILE_CONT`, `YEAR()`, `EXTRACT`)
-- Use `{{ ref('model') }}` for cross-model references, `{{ source('bronze', 'table') }}` for raw sources
-- Column names and types must match `docs/SPEC.md` exactly — no improvising
-- Max line length: 100 chars (SQLFluff enforced)
-- Each model must have corresponding tests in `schema.yml` as per SPEC.md
-- Window functions use ClickHouse frame syntax: `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`
+- ClickHouse dialect only: `quantile(0.5)(col)` pas `PERCENTILE_CONT`, `toYear(date)` pas `YEAR()`, `argMax(col, x)` pas `FIRST_VALUE`
+- Toujours `{{ ref() }}` et `{{ source() }}` — jamais de noms de tables hardcodés
+- Noms de colonnes et types : correspondre exactement à `docs/SPEC.md`
+- Max 100 chars par ligne — SQLFluff vérifie automatiquement
+- Chaque nouveau modèle doit avoir des tests dans `schema.yml`

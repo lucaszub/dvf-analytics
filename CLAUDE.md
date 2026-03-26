@@ -1,88 +1,68 @@
-# CLAUDE.md
+# DVF Analytics
 
-DVF Analytics — pipeline data local (ClickHouse · dbt · FastAPI · React) pour les transactions DVF Bretagne.
-Single deliverable: `docker compose up`.
+Pipeline data local pour les transactions immobilières DVF Bretagne.
+Stack : ClickHouse · dbt · FastAPI · React. Livrable unique : `docker compose up`.
 
-**Before implementing any module: read `docs/SPEC.md` (structure exacte) and `docs/PLAN.md` (critères de validation).**
+Specs : `docs/SPEC.md` · Plan de validation : `docs/PLAN.md`
 
-## Commands
+## Architecture
+
+| Service | Rôle | Port |
+|---------|------|------|
+| clickhouse | OLAP database | 8123 |
+| ingest | DVF géolocalisées + sections + parcelles → bronze | — |
+| dbt | Transforms Silver + Gold | — |
+| api | FastAPI REST | 8000 |
+| frontend | React + Deck.gl carte prix | 5173 |
+
+Ordre de démarrage : clickhouse → ingest → dbt → api → frontend
+
+## Règles non-négociables
+
+- **Bronze = raw** : zéro filtrage en ingestion. Les filtres appartiennent au Silver dbt.
+- **SPEC.md est autoritaire** : noms de colonnes, types, endpoints, interfaces TS — suivre exactement.
+- **Idempotence** : ingestion et dbt re-exécutables sans dupliquer les données.
+- **Pas de mocks en production** : ClickHouse réel uniquement.
+- **SQLFluff** : tout `.sql` dans `transform/` doit passer (dialecte ClickHouse, max 100 chars).
+
+## Commandes
 
 ```bash
 docker compose up                              # full stack
-docker compose up -d clickhouse               # ClickHouse only
-docker compose up ingest                       # bronze (exits when done)
-docker compose up dbt                          # transforms (exits when done)
+docker compose up -d clickhouse               # ClickHouse seul
+docker compose up ingest                       # bronze (exit quand terminé)
+docker compose up dbt                          # transforms (exit quand terminé)
 docker compose up api                          # FastAPI :8000
 docker compose up frontend                     # React :5173
-docker compose down -v && docker compose up   # full reset
+docker compose down -v && docker compose up   # reset complet
 
-# Validate
+# Validation
 curl "http://localhost:8123/?query=SELECT+count()+FROM+bronze.raw_dvf"
 curl http://localhost:8000/docs
 ```
 
-## Non-negotiable rules
+## Statut
 
-- **Bronze = raw**: zero filtering in ingestion. Filters belong in dbt Silver.
-- **SPEC.md is authoritative**: column names, types, endpoints, TS interfaces — follow exactly.
-- **Idempotency**: ingestion and dbt must be re-runnable without duplicating data.
-- **No mocks in production paths**: real ClickHouse only. Mock data = isolated UI dev only.
-- **SQLFluff**: all `.sql` in `transform/` must pass (ClickHouse dialect, dbt templater, max 100 chars).
-
-## Implementation status
-
-| Module | Status |
+| Module | Statut |
 |--------|--------|
 | Docker Compose + ClickHouse | ✅ Done |
-| ingestion/ (bronze) | ✅ Done |
-| transform/ (dbt Silver + Gold) | ✅ Done |
-| api/ (FastAPI) | ❌ Not started |
-| frontend/ (React) | ✅ Done (mock data) |
-| .gitlab-ci.yml | ❌ Not started |
+| ingestion/ | 🔄 À refaire — migrer vers DVF géolocalisées + sections + parcelles |
+| transform/ (Silver + Gold) | 🔄 À étendre — stg_sections, stg_parcelles, mart_prix_section, mart_prix_parcelle |
+| api/ (FastAPI) | 🔄 En cours |
+| frontend/ (React) | 🔄 À refaire — GeoJsonLayer polygones, drill-down par zoom |
+| .gitlab-ci.yml | ❌ À faire |
+
+## Modules — contexte détaillé
+
+- `ingestion/` → [ingestion/CLAUDE.md](ingestion/CLAUDE.md)
+- `transform/` → [transform/CLAUDE.md](transform/CLAUDE.md)
+- `api/` → [api/CLAUDE.md](api/CLAUDE.md)
+- `frontend/` → [frontend/CLAUDE.md](frontend/CLAUDE.md)
 
 ## Agentic setup
 
-### Structure
+Skills : `/implement-step N` · `/docker-debug` · `/security-review` · `/dbt` · `/fastapi` · `/fastapi-templates` · `/shadcn`
 
-```
-dvf-analytics/
-├── CLAUDE.md                    # ce fichier
-└── .claude/
-    ├── settings.json            # permissions, env vars, hooks
-    ├── agents/                  # subagents projet
-    │   ├── dbt-reviewer.md
-    │   └── security-reviewer.md
-    ├── hooks/                   # sqlfluff-check.sh, block-dangerous-sql.sh
-    ├── rules/                   # règles chargées par chemin de fichier
-    │   ├── api.md               # → appliqué sur api/**
-    │   ├── frontend.md          # → appliqué sur frontend/**
-    │   └── transform.md         # → appliqué sur transform/**
-    └── skills/                  # toutes les skills
-        ├── dbt/                 # skill principale dbt (SKILL.md = entry point)
-        │   ├── SKILL.md         # commandes, dialect ClickHouse, structure modèles
-        │   ├── create-models/   # créer/modifier un modèle Silver ou Gold
-        │   ├── debug/           # déboguer erreurs dbt
-        │   ├── document/        # schema.yml, descriptions
-        │   ├── incremental/     # modèles incrémentaux
-        │   ├── migrate-sql/     # SQL legacy → dbt
-        │   ├── refactor/        # refactoring avec analyse downstream
-        │   └── test/            # tests et couverture
-        ├── docker-debug/
-        ├── implement-step/
-        ├── security-review/
-        ├── fastapi/             # best practices FastAPI (tiangolo officiel)
-        ├── fastapi-templates/   # structure routes/services/repos, pytest
-        └── shadcn/              # composants shadcn/ui
-```
+Subagents : `dbt-reviewer` (modèles Silver/Gold), `security-reviewer` (FastAPI + SQL)
 
-### Skills disponibles (`/skill-name`)
-
-**dbt :** `/dbt` (entry point principal — les sous-dossiers sont des guides de référence)
-
-**infra :** `/implement-step N` · `/docker-debug` · `/security-review`
-
-**frontend/api :** `/fastapi` · `/fastapi-templates` · `/shadcn`
-
-### Subagents
-
-`dbt-reviewer`, `security-reviewer` — invoquer avec "use a subagent to..."
+Hooks actifs : sqlfluff-check.sh (post-write sur `.sql`), block-dangerous-sql.sh (pre-bash)

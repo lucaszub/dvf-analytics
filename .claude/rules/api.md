@@ -1,11 +1,8 @@
----
-paths: api/**
----
-# Rules — FastAPI / ClickHouse (api/)
+# Rules — api/
 
-- Use `clickhouse-driver` with parameterized queries — NEVER f-strings with user input in SQL
-- CORS: `allow_origins=["http://localhost:5173"]` only, no wildcards
-- All query parameters must be typed (FastAPI type annotations or Pydantic models)
-- Response shapes must match TypeScript interfaces in `docs/SPEC.md` exactly
-- No hardcoded credentials — use environment variables (`CLICKHOUSE_HOST`, etc.)
-- Endpoints: `/communes`, `/departements`, `/bretagne/kpis`, `/bretagne/historique` — see SPEC.md
+- Requêtes ClickHouse paramétrées uniquement — jamais `f"SELECT ... {user_input}"`
+- CORS : `allow_origins=["http://localhost:5173"]` — aucune autre origine
+- Tous les paramètres query typés : `Annotated[int, Query(ge=0)]`, `Annotated[str, Path()]`, etc.
+- Credentials depuis env vars — jamais hardcodés dans le code
+- Shapes de réponse = interfaces TypeScript dans `docs/SPEC.md` (noms de champs identiques)
+- Injection via `ClientDep` de `db.py` — pas d'instanciation directe du client dans les routers

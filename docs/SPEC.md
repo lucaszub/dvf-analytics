@@ -23,18 +23,26 @@ Après quelques minutes (téléchargement des données + transformations dbt), l
 
 **Ce que Docker Compose orchestre automatiquement :**
 1. `clickhouse` — démarre la base de données OLAP
-2. `ingest` — attend ClickHouse, télécharge les données DVF + GeoJSON et les charge en bronze *(init container, s'arrête quand c'est fait)*
+2. `ingest` — attend ClickHouse, télécharge les données DVF géolocalisées + sections + parcelles cadastrales et les charge en bronze *(init container, s'arrête quand c'est fait)*
 3. `dbt` — attend la fin de l'ingestion, lance `dbt run && dbt test` *(init container, s'arrête quand c'est fait)*
 4. `api` — attend dbt, démarre FastAPI et expose les endpoints
 5. `frontend` — démarre le frontend React servi par nginx
 
-> L'ingestion (~200k lignes) prend environ 2-5 minutes la première fois. Les données sont persistées dans un volume Docker — les lancements suivants démarrent en quelques secondes.
+> L'ingestion (DVF ~200k lignes + géométries cadastrales) prend environ 5-15 minutes la première fois selon la connexion réseau. Les données sont persistées dans un volume Docker — les lancements suivants démarrent en quelques secondes.
 
 ---
 
 # Vision
 
-Pipeline data local de bout en bout sur les données DVF Bretagne, avec visualisation cartographique interactive. Démonstration de pratiques data engineering production-grade sur stack open-source, transférable à Snowflake sans réécriture.
+Pipeline data local de bout en bout sur les données DVF Bretagne, avec visualisation cartographique interactive à polygones à chaque niveau de zoom — similaire à explore.data.gouv.fr. Démonstration de pratiques data engineering production-grade sur stack open-source, transférable à Snowflake sans réécriture.
+
+**Comportement de la carte :**
+- Zoom < 8 → polygones des **départements** colorés par `prix_median_m2`
+- Zoom 8–11 → polygones des **communes** colorés par `prix_median_m2`
+- Zoom 11–14 → polygones des **sections cadastrales** colorés par `prix_median_m2`
+- Zoom ≥ 14 → polygones des **parcelles cadastrales** colorés par `prix_median_m2` + clic → mutations individuelles
+
+Chaque niveau est chargé à la demande depuis l'API lors du changement de zoom.
 
 ---
 
@@ -58,12 +66,12 @@ Pipeline data local de bout en bout sur les données DVF Bretagne, avec visualis
 dvf-analytics/
 ├── SPEC.md                        ← ce document
 ├── README.md                      ← setup + workflow Claude Code
-├── docker-compose.yml             ← ClickHouse
+├── docker-compose.yml
 ├── .pre-commit-config.yaml        ← SQLFluff hook
 ├── .gitlab-ci.yml                 ← dbt build + test
 │
 ├── ingestion/
-│   ├── ingest.py                  ← script unique d'ingestion
+│   ├── ingest.py                  ← script unique d'ingestion (DVF géo + cadastre)
 │   ├── config.py                  ← URLs sources, params ClickHouse
 │   └── requirements.txt
 │
@@ -73,15 +81,19 @@ dvf-analytics/
 │   ├── .sqlfluff
 │   └── models/
 │       ├── bronze/
-│       │   └── sources.yml
+│       │   └── sources.yml        ← raw_dvf_geo, raw_communes, raw_sections, raw_parcelles
 │       ├── silver/
 │       │   ├── stg_dvf.sql
 │       │   ├── stg_communes.sql
+│       │   ├── stg_sections.sql
+│       │   ├── stg_parcelles.sql
 │       │   └── schema.yml
 │       └── gold/
 │           ├── mart_prix_commune.sql
 │           ├── mart_prix_departement.sql
 │           ├── mart_prix_bretagne.sql
+│           ├── mart_prix_section.sql
+│           ├── mart_prix_parcelle.sql
 │           └── schema.yml
 │
 ├── api/
@@ -90,7 +102,9 @@ dvf-analytics/
 │   └── routers/
 │       ├── communes.py
 │       ├── departements.py
-│       └── kpis.py
+│       ├── kpis.py
+│       ├── sections.py
+│       └── parcelles.py
 │
 └── frontend/
     ├── package.json
@@ -99,14 +113,15 @@ dvf-analytics/
         ├── app/
         │   ├── App.tsx
         │   ├── data/
-        │   │   └── api.ts           ← client FastAPI (remplace brittanyData.ts statique)
+        │   │   └── api.ts           ← client FastAPI
         │   └── components/
         │       ├── Header.tsx
-        │       ├── MapView.tsx      ← DeckGL ScatterplotLayer
+        │       ├── MapView.tsx      ← DeckGL GeoJsonLayer zoom-driven
         │       ├── ControlPanel.tsx
         │       ├── Filters.tsx
         │       ├── KPICards.tsx
-        │       └── TrendChart.tsx
+        │       ├── TrendChart.tsx
+        │       └── MutationPanel.tsx ← panneau latéral mutations au clic parcelle
         └── components/
             └── ui/                  ← shadcn/ui components
 ```
@@ -115,17 +130,34 @@ dvf-analytics/
 
 # Sources de données
 
-## DVF
+## DVF géolocalisées
 
 - **URL** : `https://files.data.gouv.fr/geo-dvf/latest/csv/{annee}/departements/{dept}.csv.gz`
 - **Départements** : 22, 29, 35, 56
-- **Années** : 2018 à 2024
+- **Années** : 2020 à 2024 (2018–2019 optionnel)
 - **Format** : CSV compressé gzip
+- **Champs clés vs DVF brut** : `longitude`, `latitude`, `id_parcelle` (14 chars, ex. `35238000AB0068`)
+- **Format `id_parcelle`** : `{code_commune_5}{prefixe_3}{section_2}{numero_4}`
 
 ## GeoJSON communes
 
 - **URL** : `https://geo.api.gouv.fr/departements/{dept}/communes?fields=nom,code,codesPostaux,centre&format=geojson`
-- Utilisé pour enrichissement silver (coordonnées) ET rendu Deck.gl frontend
+- Utilisé pour enrichissement silver (coordonnées centroïde) ET rendu Deck.gl département/commune
+
+## Sections cadastrales
+
+- **URL** : `https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/departements/{dept}/cadastre-{dept}-sections.json.gz`
+- **Format** : GeoJSON (MultiPolygon) compressé gzip
+- **Id section** : 10 chars — `{code_commune_5}{prefixe_3}{section_2}` (ex. `35238000AB`)
+- **Propriétés** : `id`, `commune` (code INSEE 5 chars), `prefixe`, `section` (lettre(s)), `contenance` (m²)
+
+## Parcelles cadastrales
+
+- **URL** : `https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/departements/{dept}/cadastre-{dept}-parcelles.json.gz`
+- **Format** : GeoJSON (Polygon) compressé gzip
+- **Id parcelle** : 14 chars — correspond exactement à `id_parcelle` dans les DVF géolocalisées
+- **Propriétés** : `id`, `commune`, `prefixe`, `section`, `numero`, `contenance` (m²)
+- **Volume** : ~200 MB gz par département (4 × ~200 MB ≈ ~800 MB total gz)
 
 ---
 
@@ -137,32 +169,41 @@ python ingestion/ingest.py
 
 **Comportement attendu :**
 
-- Télécharge les CSV DVF pour les 4 départements × 7 années
-- Décompresse et insère dans `bronze.raw_dvf`
+- Télécharge les CSV DVF géolocalisés pour les 4 départements × années configurées
+- Décompresse et insère dans `bronze.raw_dvf_geo`
 - Télécharge le GeoJSON communes et insère dans `bronze.raw_communes`
-- Idempotent : `SELECT count()` sur la partition dept/année avant insertion
-- Logs structurés : `[INFO] Chargement 35/2023 — 28 432 lignes`
+- Télécharge les sections cadastrales (GeoJSON) et insère dans `bronze.raw_sections`
+- Télécharge les parcelles cadastrales (GeoJSON) et insère dans `bronze.raw_parcelles`
+- Idempotent : vérifie `SELECT count()` sur la partition dept/année avant insertion pour `raw_dvf_geo` ; vérifie count sur `commune` pour sections/parcelles
+- Logs structurés : `[INFO] Chargement DVF 35/2023 — 28 432 lignes` / `[INFO] Chargement sections 35 — 4 217 sections`
 
 ## Schéma bronze cible
 
 ```sql
-CREATE TABLE raw_dvf (
-    id_mutation          String,
-    date_mutation        Date,
-    code_departement     String,
-    code_commune         String,
-    nom_commune          String,
-    code_postal          String,
-    type_local           String,
-    surface_reelle_bati  Float32,
-    valeur_fonciere      Float64,
-    nombre_lots          UInt8,
-    _loaded_at           DateTime DEFAULT now()
+-- Remplace raw_dvf — inclut géolocalisation et id_parcelle
+CREATE TABLE bronze.raw_dvf_geo (
+    id_mutation               String,
+    date_mutation             Date,
+    code_departement          String,
+    code_commune              String,
+    nom_commune               String,
+    code_postal               String,
+    adresse_nom_voie          String,
+    type_local                String,
+    surface_reelle_bati       Float32,
+    nombre_pieces_principales UInt8,
+    valeur_fonciere           Float64,
+    nombre_lots               UInt8,
+    id_parcelle               String,   -- 14 chars, clé de jointure avec cadastre
+    longitude                 Float64,
+    latitude                  Float64,
+    _loaded_at                DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (code_departement, date_mutation)
 PARTITION BY (code_departement, toYear(date_mutation));
 
-CREATE TABLE raw_communes (
+-- Inchangée
+CREATE TABLE bronze.raw_communes (
     code_commune  String,
     nom_commune   String,
     code_dept     String,
@@ -170,6 +211,29 @@ CREATE TABLE raw_communes (
     latitude      Float64
 ) ENGINE = MergeTree()
 ORDER BY code_commune;
+
+CREATE TABLE bronze.raw_sections (
+    id          String,   -- 10 chars : code_commune(5) + prefixe(3) + section(2)
+    commune     String,   -- code INSEE 5 chars
+    prefixe     String,
+    section     String,   -- lettre(s)
+    contenance  UInt32,   -- superficie m²
+    geometry    String,   -- géométrie GeoJSON en String (MultiPolygon)
+    _loaded_at  DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY (commune, id);
+
+CREATE TABLE bronze.raw_parcelles (
+    id          String,   -- 14 chars : correspond à id_parcelle dans raw_dvf_geo
+    commune     String,   -- code INSEE 5 chars
+    prefixe     String,
+    section     String,
+    numero      String,
+    contenance  UInt32,   -- superficie m²
+    geometry    String,   -- géométrie GeoJSON en String (Polygon)
+    _loaded_at  DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY (commune, id);
 ```
 
 ---
@@ -189,17 +253,37 @@ ORDER BY code_commune;
 - Extraction `annee = toYear(date_mutation)`
 
 **Colonnes output :**
-`id_mutation, date_mutation, annee, code_commune, nom_commune, code_departement, type_local, surface_reelle_bati, valeur_fonciere, prix_m2`
+`id_mutation, date_mutation, annee, code_commune, nom_commune, code_departement, code_postal, adresse_nom_voie, type_local, surface_reelle_bati, nombre_pieces_principales, valeur_fonciere, prix_m2, id_parcelle, longitude, latitude`
 
 ## Silver — `stg_communes`
 
 **Transformations :**
 
-- Jointure `raw_communes` sur `raw_dvf.code_commune`
+- Source : `bronze.raw_communes`
 - Dédoublonnage sur `code_commune`
 
 **Colonnes output :**
 `code_commune, nom_commune, code_dept, longitude, latitude`
+
+## Silver — `stg_sections`
+
+**Transformations :**
+
+- Source : `bronze.raw_sections`
+- Dédoublonnage sur `id`
+
+**Colonnes output :**
+`id, commune, section, contenance, geometry`
+
+## Silver — `stg_parcelles`
+
+**Transformations :**
+
+- Source : `bronze.raw_parcelles`
+- Dédoublonnage sur `id`
+
+**Colonnes output :**
+`id, commune, section, numero, contenance, geometry`
 
 ## Gold — `mart_prix_commune`
 
@@ -210,9 +294,11 @@ SELECT
     code_departement,
     annee,
     type_local,
-    quantile(0.5)(prix_m2)   AS prix_median_m2,
-    avg(prix_m2)             AS prix_moyen_m2,
-    count()                  AS nb_transactions
+    quantile(0.5)(prix_m2)              AS prix_median_m2,
+    avg(prix_m2)                        AS prix_moyen_m2,
+    count()                             AS nb_transactions,
+    argMax(longitude, date_mutation)    AS longitude,
+    argMax(latitude, date_mutation)     AS latitude
 FROM {{ ref('stg_dvf') }}
 GROUP BY code_commune, nom_commune, code_departement, annee, type_local
 ```
@@ -229,18 +315,55 @@ Inclut `commune_plus_chere` et `commune_moins_chere` via `argMax` / `argMin`.
 Agrégation globale par `annee, type_local`.
 Prix médian breton via `quantile(0.5)` sur l'ensemble des communes.
 
+## Gold — `mart_prix_section`
+
+```sql
+SELECT
+    s.id              AS section_id,
+    s.commune         AS code_commune,
+    s.geometry,
+    d.annee,
+    d.type_local,
+    quantile(0.5)(d.prix_m2)  AS prix_median_m2,
+    count()                    AS nb_transactions
+FROM {{ ref('stg_sections') }} s
+LEFT JOIN {{ ref('stg_dvf') }} d
+    ON substring(d.id_parcelle, 1, 10) = s.id
+GROUP BY s.id, s.commune, s.geometry, d.annee, d.type_local
+```
+
+## Gold — `mart_prix_parcelle`
+
+```sql
+SELECT
+    p.id              AS parcelle_id,
+    p.commune         AS code_commune,
+    p.geometry,
+    d.annee,
+    d.type_local,
+    quantile(0.5)(d.prix_m2)  AS prix_median_m2,
+    count()                    AS nb_transactions
+FROM {{ ref('stg_parcelles') }} p
+LEFT JOIN {{ ref('stg_dvf') }} d ON d.id_parcelle = p.id
+GROUP BY p.id, p.commune, p.geometry, d.annee, d.type_local
+```
+
 ---
 
 # Tests dbt
 
 | Modèle | Test |
 |---|---|
-| `stg_dvf` | `not_null` sur `id_mutation`, `prix_m2`, `code_commune` |
+| `stg_dvf` | `not_null` sur `id_mutation`, `prix_m2`, `code_commune`, `id_parcelle` |
 | `stg_dvf` | `unique` sur `id_mutation` |
 | `stg_dvf` | `accepted_values` sur `type_local` |
 | `stg_communes` | `not_null` + `unique` sur `code_commune` |
+| `stg_sections` | `not_null` + `unique` sur `id` |
+| `stg_parcelles` | `not_null` + `unique` sur `id` |
 | `mart_prix_commune` | `not_null` sur `prix_median_m2`, `nb_transactions` |
 | `mart_prix_commune` | `relationships` vers `stg_communes.code_commune` |
+| `mart_prix_section` | `not_null` sur `section_id`, `nb_transactions` |
+| `mart_prix_parcelle` | `not_null` sur `parcelle_id`, `nb_transactions` |
 | Custom | `prix_median_m2 > 0` sur tous les modèles gold |
 
 ---
@@ -266,6 +389,23 @@ GET /bretagne/kpis
 
 GET /bretagne/historique
   → Évolution prix médian par année [{annee, prix_median_m2}]
+
+GET /communes/{code_commune}/sections
+  ?type=appartement   (optionnel)
+  &annee=2023         (optionnel)
+  → GeoJSON FeatureCollection — une Feature par section :
+    { section_id, geometry (MultiPolygon), prix_median_m2, nb_transactions }
+
+GET /sections/{section_id}/parcelles
+  ?type=appartement   (optionnel)
+  &annee=2023         (optionnel)
+  → GeoJSON FeatureCollection — une Feature par parcelle :
+    { parcelle_id, geometry (Polygon), prix_median_m2, nb_transactions }
+
+GET /parcelles/{parcelle_id}/mutations
+  → Liste des mutations individuelles sur cette parcelle :
+    [{ id_mutation, date_mutation, type_local, valeur_fonciere,
+       surface_reelle_bati, prix_m2, adresse_nom_voie }]
 ```
 
 **Swagger** disponible automatiquement sur `/docs`.
@@ -273,18 +413,47 @@ GET /bretagne/historique
 
 ---
 
-# Interface TypeScript — CommuneData
+# Interfaces TypeScript
 
 ```typescript
+// Réponse /communes/{code}/sections et /sections/{id}/parcelles
+export interface GeoFeatureResponse {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: GeoJSON.Geometry;   // MultiPolygon (sections) | Polygon (parcelles)
+    properties: {
+      id: string;                 // section_id ou parcelle_id
+      code_commune: string;
+      prix_median_m2: number | null;   // null si aucune transaction
+      nb_transactions: number;
+      annee?: number;
+      type_local?: string;
+    };
+  }>;
+}
+
+export interface MutationData {
+  id_mutation: string;
+  date_mutation: string;        // ISO date
+  type_local: string;
+  valeur_fonciere: number;
+  surface_reelle_bati: number;
+  prix_m2: number;
+  adresse_nom_voie: string;
+}
+
+// CommuneData — longitude/latitude ajoutés (centroïde depuis stg_dvf)
 export interface CommuneData {
-  id: string;                     // code INSEE commune
+  id: string;                   // code INSEE commune
   name: string;
   department: string;
-  departmentCode: string;          // '22' | '29' | '35' | '56'
-  pricePerSqm: number;             // prix médian au m²
+  departmentCode: string;       // '22' | '29' | '35' | '56'
+  pricePerSqm: number;          // prix médian au m²
   transactions: number;
-  evolution: number;               // évolution % vs N-1
-  coordinates: [number, number];   // [longitude, latitude] — ordre Deck.gl
+  evolution: number;            // évolution % vs N-1
+  longitude: number;
+  latitude: number;
 }
 ```
 
@@ -293,6 +462,13 @@ export interface CommuneData {
 # Frontend — Configuration Deck.gl
 
 ```typescript
+// Seuils de zoom (identiques à explore.data.gouv.fr)
+const ZOOM_DEPT = 8;       // < 8 → département
+const ZOOM_COMMUNE = 11;   // 8–11 → commune
+const ZOOM_SECTION = 14;   // 11–14 → section cadastrale
+// ≥ 14 → parcelle + mutations au clic
+
+// Vue initiale (Bretagne)
 const INITIAL_VIEW_STATE = {
   longitude: -2.8,
   latitude: 48.2,
@@ -301,14 +477,22 @@ const INITIAL_VIEW_STATE = {
   bearing: 0,
 };
 
-// Palette couleur prix
-function getPriceColor(price: number): [number, number, number] {
-  if (price < 2000) return [70, 130, 180];   // bleu
-  if (price < 3000) return [100, 160, 150];  // teal
-  if (price < 4000) return [220, 160, 80];   // amber
-  return [230, 90, 70];                       // rouge
+// Palette couleur prix_m2
+function getPriceColor(price: number | null): [number, number, number, number] {
+  if (price === null) return [180, 180, 180, 100];  // gris = pas de données
+  if (price < 2000) return [70, 130, 180, 200];     // bleu
+  if (price < 3000) return [100, 160, 150, 200];    // teal
+  if (price < 4000) return [220, 160, 80, 200];     // amber
+  return [230, 90, 70, 200];                         // rouge
 }
 ```
+
+**Layers Deck.gl par niveau :**
+
+- Département / Commune / Section / Parcelle → `GeoJsonLayer` avec `getFillColor` basé sur `prix_median_m2`
+- Chargement à la demande : chaque changement de niveau de zoom déclenche un fetch vers l'API pour le niveau suivant
+- Au clic sur une parcelle (zoom ≥ 14) → panneau latéral `MutationPanel` affichant la liste des mutations individuelles via `GET /parcelles/{parcelle_id}/mutations`
+- Pas de `ScatterplotLayer` (cercles) — uniquement des `GeoJsonLayer` (polygones) à tous les niveaux
 
 ---
 
@@ -405,7 +589,12 @@ volumes:
 - **Init containers** : `ingest` et `dbt` sont des services qui s'arrêtent quand ils ont fini (`service_completed_successfully`). C'est le pattern Docker Compose pour les jobs one-shot.
 - **Volume persistant** : les données ClickHouse survivent aux redémarrages — pas besoin de réingérer à chaque fois.
 - **Frontend buildé** : le frontend React est buildé pendant le `docker build` (via Vite) et servi par nginx en static — pas de node en runtime.
-- **ScatterplotLayer** (cercles) plutôt que `GeoJsonLayer` (polygones) pour simplifier — taille du cercle = volume de transactions, couleur = prix médian.
+- **GeoJsonLayer uniquement** : tous les niveaux de zoom utilisent des `GeoJsonLayer` (polygones) — aucun `ScatterplotLayer` (cercles). La couleur encode toujours le `prix_median_m2`.
+- **Chargement à la demande** : les géométries ne sont pas toutes chargées au démarrage. Chaque niveau (département/commune/section/parcelle) est fetché depuis l'API au changement de seuil de zoom.
+- **Géométries stockées en String** : les géométries GeoJSON sont stockées en `String` dans ClickHouse et renvoyées telles quelles par l'API dans les FeatureCollection — pas de conversion intermédiaire.
+- **Join key cadastre–DVF** : `substring(id_parcelle, 1, 10) = section.id` pour les sections ; `id_parcelle = parcelle.id` pour les parcelles.
 - **Médiane via `quantile(0.5)`** ClickHouse — pas de moyenne arithmétique sur les prix.
-- **Données réelles** uniquement — pas de mock en production. Les données mock (`brittanyData.ts`) servent uniquement pendant le dev frontend avant que l'API soit prête.
+- **Données réelles uniquement** — pas de mock en production. Les données mock servent uniquement pendant le dev frontend avant que l'API soit prête.
 - **Cloud-agnostic** : changer `profiles.yml` de `clickhouse` à `snowflake` suffit pour migrer toute la couche dbt.
+- **Bronze = raw** : zéro filtrage dans l'ingestion. Les filtres (nature_mutation, type_local, outliers) appartiennent à la couche Silver dbt.
+- **Idempotence** : l'ingestion et dbt doivent être relançables sans dupliquer les données.

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents, CircleMarker, Tooltip } from 'react-leaflet'
 import type { PathOptions, LeafletMouseEvent, LatLngBoundsExpression } from 'leaflet'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import { bretagne } from '@/data/geoData'
 import type { DeptCode } from '@/types'
-import { priceColor } from '@/utils/colors'
+import { makeColorScale } from '@/utils/colors'
 import type { CommuneResponse, CodePostalResponse, MutationResponse } from '@/data/api'
 
 interface MapFilters {
@@ -38,6 +38,58 @@ const DEPT_BOUNDS: Record<DeptCode, LatLngBoundsExpression> = {
 const BRETAGNE_CENTER: [number, number] = [48.2, -3.0]
 const BRETAGNE_ZOOM = 8
 
+// ── Geometry helpers ──────────────────────────────────────────────────────────
+
+type Coord = [number, number]
+
+/** Iterate all coordinate pairs in a GeoJSON geometry. */
+function* iterCoords(geometry: Geometry): Generator<Coord> {
+  if (geometry.type === 'Polygon') {
+    for (const ring of geometry.coordinates)
+      for (const c of ring) yield c as Coord
+  } else if (geometry.type === 'MultiPolygon') {
+    for (const poly of geometry.coordinates)
+      for (const ring of poly)
+        for (const c of ring) yield c as Coord
+  }
+}
+
+/** Bounding box of a geometry. */
+function bbox(geometry: Geometry): [number, number, number, number] {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity
+  for (const [lon, lat] of iterCoords(geometry)) {
+    if (lon < minLon) minLon = lon
+    if (lon > maxLon) maxLon = lon
+    if (lat < minLat) minLat = lat
+    if (lat > maxLat) maxLat = lat
+  }
+  return [minLon, minLat, maxLon, maxLat]
+}
+
+/** Ray-casting point-in-polygon for a single ring. */
+function pointInRing([x, y]: Coord, ring: Coord[]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+      inside = !inside
+  }
+  return inside
+}
+
+function pointInGeometry(pt: Coord, geometry: Geometry): boolean {
+  if (geometry.type === 'Polygon') {
+    return pointInRing(pt, geometry.coordinates[0] as Coord[])
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return (geometry.coordinates as Coord[][][]).some(poly =>
+      pointInRing(pt, poly[0])
+    )
+  }
+  return false
+}
+
 // ── MapController — handles fly/zoom on dept or commune change ────────────────
 
 function MapController({
@@ -51,15 +103,14 @@ function MapController({
 
   useEffect(() => {
     if (selectedCommune) {
+      // SectionsLayer will fitBounds once it loads; use a medium zoom as interim fallback
       const [lon, lat] = selectedCommune.coordinates
       map.setView([lat, lon], 13, { animate: true })
     } else if (selectedDept === 'all') {
       map.setView(BRETAGNE_CENTER, BRETAGNE_ZOOM, { animate: true })
     } else {
       const bounds = DEPT_BOUNDS[selectedDept]
-      if (bounds) {
-        map.fitBounds(bounds, { padding: [60, 60], animate: true })
-      }
+      if (bounds) map.fitBounds(bounds, { padding: [60, 60], animate: true })
     }
   }, [selectedDept, selectedCommune, map])
 
@@ -79,18 +130,22 @@ function DeptLayer({
 }) {
   const map = useMap()
 
-  // Aggregate communes per dept to get median price for coloring
-  const deptPrices: Record<string, number[]> = {}
-  for (const c of communes) {
-    if (!deptPrices[c.departmentCode]) deptPrices[c.departmentCode] = []
-    deptPrices[c.departmentCode].push(c.pricePerSqm)
-  }
-
-  const deptMedian: Record<string, number> = {}
-  for (const [code, prices] of Object.entries(deptPrices)) {
-    const sorted = [...prices].sort((a, b) => a - b)
-    deptMedian[code] = sorted[Math.floor(sorted.length / 2)] ?? 0
-  }
+  const { deptMedian, colorFn } = useMemo(() => {
+    const deptPrices: Record<string, number[]> = {}
+    for (const c of communes) {
+      if (!deptPrices[c.departmentCode]) deptPrices[c.departmentCode] = []
+      deptPrices[c.departmentCode].push(c.pricePerSqm)
+    }
+    const med: Record<string, number> = {}
+    for (const [code, prices] of Object.entries(deptPrices)) {
+      const s = [...prices].sort((a, b) => a - b)
+      med[code] = s[Math.floor(s.length / 2)] ?? 0
+    }
+    return {
+      deptMedian: med,
+      colorFn: makeColorScale(Object.values(med)),
+    }
+  }, [communes])
 
   const totalTx = communes.reduce((s, c) => s + c.transactions, 0)
   const geoKey = `dept-${selectedDept}-${communes.length}-${totalTx}`
@@ -101,7 +156,7 @@ function DeptLayer({
     const isSelected = selectedDept !== 'all' && selectedDept === code
     const isOtherDept = selectedDept !== 'all' && selectedDept !== code
     const median = deptMedian[code]
-    const color = median ? priceColor(median) : '#e5e7eb'
+    const color = median ? colorFn(median) : '#e5e7eb'
     return {
       fillColor: color,
       fillOpacity: isSelected ? 0.08 : isOtherDept ? 0.04 : 0.72,
@@ -140,9 +195,7 @@ function DeptLayer({
         e.target.setStyle({ fillOpacity: 0.88, weight: 2, color: '#09090b' })
         e.target.bringToFront()
       },
-      mouseout() {
-        layer.setStyle(style(feature))
-      },
+      mouseout() { layer.setStyle(style(feature)) },
       click(e: LeafletMouseEvent) {
         if (selectedDept === 'all') {
           onDeptSelect(code as DeptCode)
@@ -162,11 +215,7 @@ function DeptLayer({
   )
 }
 
-// ── Commune GeoJSON choropleth layer (levels 2 & 3) ──────────────────────────
-//
-// Mode normal  (selectedCommune = null) : couleur par prix commune, clic pour sélection
-// Mode CP      (selectedCommune ≠ null) : couleur par prix code postal de chaque commune,
-//              commune sélectionnée mise en évidence, pas de clic
+// ── Commune choropleth layer ──────────────────────────────────────────────────
 
 function CommuneGeoLayer({
   communeGeoJSON,
@@ -183,13 +232,18 @@ function CommuneGeoLayer({
 }) {
   const isCPMode = selectedCommune !== null
 
-  // Mode normal — index communes par code INSEE
-  const communeByCode: Record<string, CommuneResponse> = {}
-  for (const c of communes) communeByCode[c.id] = c
+  const { communeByCode, cpByCode, colorFn } = useMemo(() => {
+    const byCode: Record<string, CommuneResponse> = {}
+    for (const c of communes) byCode[c.id] = c
+    const byCp: Record<string, CodePostalResponse> = {}
+    for (const cp of codePostaux) byCp[cp.code] = cp
 
-  // Mode CP — index codes postaux par code CP
-  const cpByCode: Record<string, CodePostalResponse> = {}
-  for (const cp of codePostaux) cpByCode[cp.code] = cp
+    const prices = isCPMode
+      ? codePostaux.map(cp => cp.pricePerSqm)
+      : communes.map(c => c.pricePerSqm)
+
+    return { communeByCode: byCode, cpByCode: byCp, colorFn: makeColorScale(prices) }
+  }, [communes, codePostaux, isCPMode])
 
   const totalTx = isCPMode
     ? codePostaux.reduce((s, cp) => s + cp.transactions, 0)
@@ -199,7 +253,6 @@ function CommuneGeoLayer({
   function getPrice(feature: Feature): number {
     const code = feature.properties?.code as string
     if (isCPMode) {
-      // Color by first code postal of this commune
       const cps = feature.properties?.codesPostaux as string[] | undefined
       const cp = cps?.map(c => cpByCode[c]).find(Boolean)
       return cp?.pricePerSqm ?? 0
@@ -212,12 +265,12 @@ function CommuneGeoLayer({
     const code = feature.properties?.code as string
     const isSelected = selectedCommune?.id === code
     const prix = getPrice(feature)
-    const color = prix > 0 ? priceColor(prix) : '#e5e7eb'
+    const color = prix > 0 ? colorFn(prix) : '#e5e7eb'
     return {
       fillColor: color,
-      fillOpacity: isSelected ? 0.85 : isCPMode ? 0.72 : 0.72,
+      fillOpacity: isSelected ? 0.20 : 0.72,
       color: isSelected ? '#09090b' : 'rgba(255,255,255,0.7)',
-      weight: isSelected ? 3 : 0.8,
+      weight: isSelected ? 2 : 0.8,
     }
   }
 
@@ -226,7 +279,6 @@ function CommuneGeoLayer({
     const code = feature.properties?.code as string
 
     if (isCPMode) {
-      // Tooltip shows code postal price
       const cps = feature.properties?.codesPostaux as string[] | undefined
       const cp = cps?.map(c => cpByCode[c]).find(Boolean)
       const nom = feature.properties?.nom as string
@@ -251,7 +303,6 @@ function CommuneGeoLayer({
         mouseout() { layer.setStyle(style(feature)) },
       })
     } else {
-      // Mode normal — tooltip + clic
       const commune = communeByCode[code]
       if (commune) {
         const evo = commune.evolution
@@ -286,7 +337,152 @@ function CommuneGeoLayer({
   )
 }
 
-// ── H3 hexagonal choropleth layer (ultra-zoom ≥ 14 — detail within commune) ──
+// ── Sections cadastrales layer — shown when a commune is selected ─────────────
+
+function SectionsLayer({
+  selectedCommune,
+  mutations,
+}: {
+  selectedCommune: CommuneResponse
+  mutations: MutationResponse[]
+}) {
+  const map = useMap()
+  const [sectionsGeo, setSectionsGeo] = useState<FeatureCollection | null>(null)
+
+  useEffect(() => {
+    setSectionsGeo(null)
+    fetch(`/geo/sections/${selectedCommune.id}.geojson`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: FeatureCollection | null) => {
+        if (!data) return
+        setSectionsGeo(data)
+
+        // Fit the map to the commune's section boundaries
+        let minLat = Infinity, maxLat = -Infinity
+        let minLon = Infinity, maxLon = -Infinity
+        for (const feat of data.features) {
+          if (!feat.geometry) continue
+          for (const [lon, lat] of iterCoords(feat.geometry)) {
+            if (lat < minLat) minLat = lat
+            if (lat > maxLat) maxLat = lat
+            if (lon < minLon) minLon = lon
+            if (lon > maxLon) maxLon = lon
+          }
+        }
+        if (minLat !== Infinity) {
+          map.fitBounds(
+            [[minLat, minLon], [maxLat, maxLon]],
+            { padding: [40, 40], animate: true }
+          )
+        }
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCommune.id])
+
+  // Aggregate mutations → sections via PIP (with bbox prefilter for performance)
+  const { sectionMedians, sectionCounts, colorFn } = useMemo(() => {
+    if (!sectionsGeo || mutations.length === 0) {
+      return {
+        sectionMedians: {} as Record<string, number>,
+        sectionCounts: {} as Record<string, number>,
+        colorFn: makeColorScale([]),
+      }
+    }
+
+    // Precompute bounding boxes per section
+    const boxes = sectionsGeo.features.map(f =>
+      f.geometry ? bbox(f.geometry) : ([0, 0, 0, 0] as [number, number, number, number])
+    )
+
+    const sectionPrices: Record<string, number[]> = {}
+
+    for (const mut of mutations) {
+      const lon = mut.longitude
+      const lat = mut.latitude
+      for (let i = 0; i < sectionsGeo.features.length; i++) {
+        const [minLon, minLat, maxLon, maxLat] = boxes[i]
+        if (lon < minLon || lon > maxLon || lat < minLat || lat > maxLat) continue
+        const feat = sectionsGeo.features[i]
+        if (!feat.geometry) continue
+        if (pointInGeometry([lon, lat], feat.geometry)) {
+          const id = feat.properties?.id as string
+          if (id) {
+            if (!sectionPrices[id]) sectionPrices[id] = []
+            sectionPrices[id].push(mut.prix_m2)
+          }
+          break
+        }
+      }
+    }
+
+    const medians: Record<string, number> = {}
+    const counts: Record<string, number> = {}
+    for (const [id, prices] of Object.entries(sectionPrices)) {
+      const s = [...prices].sort((a, b) => a - b)
+      medians[id] = s[Math.floor(s.length / 2)]
+      counts[id] = prices.length
+    }
+
+    return {
+      sectionMedians: medians,
+      sectionCounts: counts,
+      colorFn: makeColorScale(Object.values(medians)),
+    }
+  }, [sectionsGeo, mutations])
+
+  if (!sectionsGeo || sectionsGeo.features.length === 0) return null
+
+  const geoKey = `sections-${selectedCommune.id}-${mutations.length}`
+
+  function style(feature?: Feature): PathOptions {
+    if (!feature) return {}
+    const id = feature.properties?.id as string
+    const median = sectionMedians[id]
+    return {
+      fillColor: median ? colorFn(median) : '#f1f5f9',
+      fillOpacity: median ? 0.75 : 0.25,
+      color: 'rgba(255,255,255,0.8)',
+      weight: 1,
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function onEachFeature(feature: Feature, layer: any) {
+    const id = feature.properties?.id as string
+    const section = feature.properties?.section as string
+    const median = sectionMedians[id]
+    const count = sectionCounts[id] ?? 0
+
+    const tooltipContent = median
+      ? `<div style="font-size:12px">
+          <strong>Section ${section}</strong><br/>
+          ${median.toLocaleString('fr-FR')} €/m² (médiane)<br/>
+          <span style="color:#71717a">${count.toLocaleString('fr-FR')} vente${count > 1 ? 's' : ''}</span>
+        </div>`
+      : `<div style="font-size:12px"><strong>Section ${section}</strong><br/><span style="color:#71717a">Pas de transactions</span></div>`
+
+    layer.bindTooltip(tooltipContent, { sticky: true, opacity: 1 })
+    layer.on({
+      mouseover(e: LeafletMouseEvent) {
+        e.target.setStyle({ fillOpacity: 0.92, weight: 2, color: '#09090b' })
+        e.target.bringToFront()
+      },
+      mouseout() { layer.setStyle(style(feature)) },
+    })
+  }
+
+  return (
+    <GeoJSON
+      key={geoKey}
+      data={sectionsGeo}
+      style={style}
+      onEachFeature={onEachFeature}
+    />
+  )
+}
+
+// ── H3 hexagonal layer (ultra-zoom, dept level, no commune selected) ──────────
 
 function H3Layer({
   selectedDept,
@@ -301,12 +497,8 @@ function H3Layer({
   const [, setMoveTick] = useState(0)
 
   useMapEvents({
-    zoomend() {
-      setZoom(map.getZoom())
-    },
-    moveend() {
-      setMoveTick(t => t + 1)
-    },
+    zoomend() { setZoom(map.getZoom()) },
+    moveend() { setMoveTick(t => t + 1) },
   })
 
   useEffect(() => {
@@ -327,21 +519,27 @@ function H3Layer({
     const timer = setTimeout(() => {
       fetch(url)
         .then(r => (r.ok ? r.json() : null))
-        .then(data => {
-          if (data) setH3GeoJSON(data as FeatureCollection)
-        })
+        .then(data => { if (data) setH3GeoJSON(data as FeatureCollection) })
         .catch(() => {})
     }, 300)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, selectedDept, filters.annee, filters.typeBien, map])
 
+  const colorFn = useMemo(() => {
+    if (!h3GeoJSON) return makeColorScale([])
+    const prices = h3GeoJSON.features
+      .map(f => f.properties?.pricePerSqm as number)
+      .filter(Boolean)
+    return makeColorScale(prices)
+  }, [h3GeoJSON])
+
   if (!h3GeoJSON || h3GeoJSON.features.length === 0) return null
 
   function style(feature?: Feature): PathOptions {
     const price = feature?.properties?.pricePerSqm as number
     return {
-      fillColor: price ? priceColor(price) : '#e5e7eb',
+      fillColor: price ? colorFn(price) : '#e5e7eb',
       fillOpacity: 0.80,
       color: 'rgba(255,255,255,0.6)',
       weight: 0.5,
@@ -363,9 +561,7 @@ function H3Layer({
       mouseover(e: LeafletMouseEvent) {
         e.target.setStyle({ fillOpacity: 0.95, weight: 1, color: '#09090b' })
       },
-      mouseout() {
-        layer.setStyle(style(feature))
-      },
+      mouseout() { layer.setStyle(style(feature)) },
     })
   }
 
@@ -379,10 +575,16 @@ function H3Layer({
   )
 }
 
-// ── Individual transaction dots layer ─────────────────────────────────────────
+// ── Individual transaction dots ───────────────────────────────────────────────
 
 function MutationsLayer({ mutations }: { mutations: MutationResponse[] }) {
+  const colorFn = useMemo(
+    () => makeColorScale(mutations.map(m => m.prix_m2)),
+    [mutations]
+  )
+
   if (mutations.length === 0) return null
+
   return (
     <>
       {mutations.map(m => (
@@ -391,7 +593,7 @@ function MutationsLayer({ mutations }: { mutations: MutationResponse[] }) {
           center={[m.latitude, m.longitude]}
           radius={5}
           pathOptions={{
-            fillColor: priceColor(m.prix_m2),
+            fillColor: colorFn(m.prix_m2),
             fillOpacity: 0.85,
             color: 'rgba(255,255,255,0.6)',
             weight: 1,
@@ -399,8 +601,8 @@ function MutationsLayer({ mutations }: { mutations: MutationResponse[] }) {
         >
           <Tooltip sticky>
             <div style={{ fontSize: 12 }}>
-              <strong>{m.prix_m2.toLocaleString('fr-FR')} €/m²</strong><br/>
-              {m.surface} m² · {m.valeur_fonciere.toLocaleString('fr-FR')} €<br/>
+              <strong>{m.prix_m2.toLocaleString('fr-FR')} €/m²</strong><br />
+              {m.surface} m² · {m.valeur_fonciere.toLocaleString('fr-FR')} €<br />
               <span style={{ color: '#71717a' }}>{m.type_local} · {m.date_mutation}</span>
             </div>
           </Tooltip>
@@ -410,7 +612,7 @@ function MutationsLayer({ mutations }: { mutations: MutationResponse[] }) {
   )
 }
 
-// ── Inner layers — rendered inside MapContainer ───────────────────────────────
+// ── Inner layers ──────────────────────────────────────────────────────────────
 
 function MapLayers({
   communes,
@@ -435,16 +637,14 @@ function MapLayers({
 }) {
   return (
     <>
-      {/* Level 1 — dept outlines, always shown */}
+      {/* Dept outlines — always shown */}
       <DeptLayer
         communes={communes}
         selectedDept={selectedDept}
         onDeptSelect={onDeptSelect}
       />
 
-      {/* Level 2/3 — commune choropleth (dept selected)
-          - sans commune sélectionnée : couleur par prix commune, clic pour drill
-          - avec commune sélectionnée : couleur par code postal, commune mise en évidence */}
+      {/* Commune choropleth — dept selected */}
       {selectedDept !== 'all' && communeGeoJSON && (
         <CommuneGeoLayer
           communeGeoJSON={communeGeoJSON}
@@ -455,12 +655,17 @@ function MapLayers({
         />
       )}
 
-      {/* Level 4 — H3 détail sub-commune (ultra-zoom ≥ 14 uniquement) */}
-      {selectedDept !== 'all' && (
+      {/* H3 detail — dept selected, NO commune selected, ultra-zoom ≥ 14 */}
+      {selectedDept !== 'all' && !selectedCommune && (
         <H3Layer selectedDept={selectedDept} filters={filters} />
       )}
 
-      {/* Level 5 — individual transaction dots when commune is selected */}
+      {/* Sections cadastrales — commune selected */}
+      {selectedCommune && (
+        <SectionsLayer selectedCommune={selectedCommune} mutations={mutations} />
+      )}
+
+      {/* Individual transaction dots — commune selected */}
       {selectedCommune && <MutationsLayer mutations={mutations} />}
     </>
   )
@@ -478,7 +683,14 @@ export function Map({
   onCommuneSelect,
   filters,
   loading,
+  mutations,
+  loadingMutations,
 }: MapProps) {
+  const noTransactions =
+    selectedCommune !== null &&
+    !loadingMutations &&
+    mutations.length === 0
+
   return (
     <div className="absolute inset-0">
       {/* Loading overlay */}
@@ -507,6 +719,30 @@ export function Map({
         </div>
       )}
 
+      {/* No-transactions notice */}
+      {noTransactions && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 40,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(255,255,255,0.95)',
+            border: '1px solid #e4e4e7',
+            borderRadius: 8,
+            padding: '10px 18px',
+            zIndex: 2000,
+            fontSize: 13,
+            color: '#71717a',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Aucune transaction pour cette sélection
+        </div>
+      )}
+
       <MapContainer
         center={BRETAGNE_CENTER}
         zoom={BRETAGNE_ZOOM}
@@ -527,10 +763,10 @@ export function Map({
           onDeptSelect={onDeptSelect}
           onCommuneSelect={onCommuneSelect}
           filters={filters}
+          mutations={mutations}
         />
       </MapContainer>
 
-      {/* Spinner keyframe — injected once */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )

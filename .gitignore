@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 image.png
 image1.png
+
+# GeoJSON lourds générés localement (355MB+)
+frontend/public/geo/sections/
+frontend/public/geo/communes-*.geojson

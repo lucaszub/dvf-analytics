@@ -1,12 +1,7 @@
----
-paths: frontend/**
----
-# Rules — React / TypeScript (frontend/)
+# Rules — frontend/
 
-- Use the `CommuneData` interface from `docs/SPEC.md` — no divergence
-- Deck.gl coordinates order: `[longitude, latitude]` (NOT lat/lon)
-- Color scale for prix_m2: blue (<2000) → teal (<3000) → amber (<4000) → red (≥4000)
-- No mock data in production API calls (`api.ts` must call real FastAPI endpoints)
-- ScatterplotLayer: radius = volume (nb_transactions), color = prix médian
-- Reference implementation: `docs/base-code-frontend.md`
-- Multi-stage Dockerfile: Vite build → nginx serve (no Node.js in runtime)
+- Coordonnées Deck.gl : `[longitude, latitude]` — toujours longitude en premier
+- Scale couleur : <2000→bleu [59,130,246], <3000→teal [20,184,166], <4000→amber [245,158,11], ≥4000→rouge [239,68,68]
+- Interfaces TypeScript = shapes exactes de `docs/SPEC.md` — noms de champs identiques
+- Pas de mock data dans les appels API production — `mockData.ts` = dev isolé uniquement
+- `BASE_URL = ''` dans `api.ts` — URLs relatives uniquement
