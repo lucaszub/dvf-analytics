@@ -8,3 +8,20 @@ image1.png
 # GeoJSON lourds générés localement (355MB+)
 frontend/public/geo/sections/
 frontend/public/geo/communes-*.geojson
+.env
+
+# Terraform — état local et providers (ne jamais committer)
+# .terraform/ : providers téléchargés par terraform init (~100 Mo)
+infra/.terraform/
+# tfstate : état courant de l'infra (contient des données sensibles)
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+# tfvars : valeurs concrètes des variables (subscription_id, etc.)
+infra/*.tfvars
+infra/*.tfvars.json
+# overrides locaux
+infra/override.tf
+infra/override.tf.json
+infra/*_override.tf
+infra/*_override.tf.json
+infra/.terraform.tfstate.lock.info
