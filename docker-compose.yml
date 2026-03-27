@@ -56,7 +56,8 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.dev  # dev: Vite hot-reload
+      # dockerfile: Dockerfile    # prod: nginx build statique (tester avec ce Dockerfile)
     ports:
       - "5173:5173"
     volumes:
