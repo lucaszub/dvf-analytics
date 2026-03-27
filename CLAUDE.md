@@ -25,22 +25,6 @@ Ordre de démarrage : clickhouse → ingest → dbt → api → frontend
 - **Pas de mocks en production** : ClickHouse réel uniquement.
 - **SQLFluff** : tout `.sql` dans `transform/` doit passer (dialecte ClickHouse, max 100 chars).
 
-## Commandes
-
-```bash
-docker compose up                              # full stack
-docker compose up -d clickhouse               # ClickHouse seul (port 8124)
-docker compose up ingest                       # bronze (exit quand terminé)
-docker compose up dbt                          # transforms (exit quand terminé)
-docker compose up api                          # FastAPI :8000
-docker compose up frontend                     # React :5173
-docker compose down -v && docker compose up   # reset complet
-
-# Validation
-curl "http://localhost:8124/?query=SELECT+count()+FROM+bronze.raw_dvf_geo"
-curl http://localhost:8000/docs
-```
-
 ## Statut
 
 | Module | Statut |

@@ -30,19 +30,8 @@ Contexte global : voir [CLAUDE.md racine](../CLAUDE.md) · Specs endpoints : [do
 - **Credentials** depuis variables d'environnement
 - Tous les paramètres typés avec `Annotated[type, Query(...)]` ou `Path(...)`
 
-## Commandes
-
-```bash
-docker compose up api
-docker compose run --rm api pytest
-curl "http://localhost:8000/communes/35238/sections?annee=2023"
-curl "http://localhost:8000/sections/35238000AB/parcelles"
-curl "http://localhost:8000/parcelles/35238000AB0068/mutations"
-```
-
 ## Skills disponibles
 
-- `/fastapi` — best practices FastAPI (Annotated, Depends, paramètres typés)
-- `/fastapi-templates` — structure routers/services/repos, patterns pytest
-- `/security-review` — vérifier injection SQL, CORS, credentials
-- Subagent `security-reviewer` — audit automatique FastAPI + SQL
+- `/api-cmds` — commandes de test et démarrage (auto-chargé dans api/**)
+- `/fastapi` — best practices FastAPI
+- `/security-review` — audit injection SQL, CORS, credentials
