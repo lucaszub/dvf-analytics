@@ -8,8 +8,10 @@ import {
   fetchHistorique,
   fetchCodePostaux,
   fetchMutations,
+  fetchParcelleMutations,
 } from './data/api'
-import type { CommuneResponse, KpisResponse, HistoriquePoint, CodePostalResponse, MutationResponse } from './data/api'
+import type { CommuneResponse, KpisResponse, HistoriquePoint, CodePostalResponse, MutationResponse, ParcelleMutation } from './data/api'
+import { MutationPanel } from './components/MutationPanel'
 import type { Filters, DeptCode } from './types'
 import type { FeatureCollection } from 'geojson'
 import { DEPT_NOMS } from './types'
@@ -48,6 +50,11 @@ export default function App() {
 
   const [mutations, setMutations] = useState<MutationResponse[]>([])
   const [loadingMutations, setLoadingMutations] = useState(false)
+
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [selectedParcelleId, setSelectedParcelleId] = useState<string | null>(null)
+  const [parcelleMutations, setParcelleMutations] = useState<ParcelleMutation[]>([])
+  const [loadingParcelleMutations, setLoadingParcelleMutations] = useState(false)
 
   const [loadingMap, setLoadingMap] = useState(false)
   const [loadingKpis, setLoadingKpis] = useState(false)
@@ -100,10 +107,36 @@ export default function App() {
       })
   }, [filters.departement, filters.typeBien])
 
-  // When dept filter changes, clear commune selection
+  // When dept filter changes, clear commune + cadastre selection
   useEffect(() => {
     setSelectedCommune(null)
+    setSelectedSectionId(null)
+    setSelectedParcelleId(null)
   }, [filters.departement])
+
+  // When commune changes, clear cadastre selection
+  useEffect(() => {
+    setSelectedSectionId(null)
+    setSelectedParcelleId(null)
+  }, [selectedCommune])
+
+  // When section changes, clear parcelle selection
+  useEffect(() => {
+    setSelectedParcelleId(null)
+  }, [selectedSectionId])
+
+  // Fetch parcelle mutations when a parcelle is selected
+  useEffect(() => {
+    if (!selectedParcelleId) {
+      setParcelleMutations([])
+      return
+    }
+    setLoadingParcelleMutations(true)
+    fetchParcelleMutations(selectedParcelleId)
+      .then(setParcelleMutations)
+      .catch(() => setParcelleMutations([]))
+      .finally(() => setLoadingParcelleMutations(false))
+  }, [selectedParcelleId])
 
   // Load commune GeoJSON from local public files when dept is selected
   useEffect(() => {
@@ -177,7 +210,7 @@ export default function App() {
           selectedCommune={selectedCommune}
           codePostaux={communeFilteredCP}
         />
-        <main className="flex-1 relative overflow-hidden">
+        <main className="flex-1 relative overflow-hidden" style={{ display: 'flex' }}>
           {/* Breadcrumb navigation — rendered above the map to avoid Leaflet event capture */}
           <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 2000, display: 'flex', gap: 8, alignItems: 'center' }}>
             {filters.departement !== 'all' && !selectedCommune && (
@@ -210,22 +243,35 @@ export default function App() {
             )}
           </div>
 
-          <Map
-            communes={communes}
-            codePostaux={codePostaux}
-            communeGeoJSON={communeGeoJSON}
-            selectedDept={filters.departement}
-            selectedCommune={selectedCommune}
-            onDeptSelect={dept => {
-              setSelectedCommune(null)
-              setFilters(f => ({ ...f, departement: dept }))
-            }}
-            onCommuneSelect={setSelectedCommune}
-            filters={{ annee: filters.annee, typeBien: filters.typeBien }}
-            loading={loadingMap || loadingCP || geoLoading}
-            mutations={mutations}
-            loadingMutations={loadingMutations}
-          />
+          <div style={{ flex: 1, position: 'relative' }}>
+            <Map
+              communes={communes}
+              codePostaux={codePostaux}
+              communeGeoJSON={communeGeoJSON}
+              selectedDept={filters.departement}
+              selectedCommune={selectedCommune}
+              onDeptSelect={dept => {
+                setSelectedCommune(null)
+                setFilters(f => ({ ...f, departement: dept }))
+              }}
+              onCommuneSelect={setSelectedCommune}
+              filters={{ annee: filters.annee, typeBien: filters.typeBien }}
+              loading={loadingMap || loadingCP || geoLoading}
+              mutations={mutations}
+              loadingMutations={loadingMutations}
+              selectedSectionId={selectedSectionId}
+              onSectionSelect={setSelectedSectionId}
+              onParcelleSelect={setSelectedParcelleId}
+            />
+          </div>
+          {selectedParcelleId && (
+            <MutationPanel
+              parcelleId={selectedParcelleId}
+              mutations={parcelleMutations}
+              loading={loadingParcelleMutations}
+              onClose={() => setSelectedParcelleId(null)}
+            />
+          )}
         </main>
       </div>
     </div>

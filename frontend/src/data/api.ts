@@ -199,3 +199,63 @@ export async function fetchCommuneMapping(dept: DeptCode): Promise<CommuneMappin
   const params = buildParams({ dept })
   return get<CommuneMappingItem[]>('/communes/mapping', params)
 }
+
+// ---------------------------------------------------------------------------
+// Cadastre — sections, parcelles, mutations parcelle
+// ---------------------------------------------------------------------------
+
+export interface GeoFeatureProperties {
+  id: string
+  code_commune: string
+  prix_median_m2: number | null
+  nb_transactions: number
+  annee?: number
+  type_local?: string
+}
+
+export interface GeoFeatureResponse {
+  type: 'FeatureCollection'
+  features: Array<{
+    type: 'Feature'
+    geometry: object
+    properties: GeoFeatureProperties
+  }>
+}
+
+export interface ParcelleMutation {
+  id_mutation: string
+  date_mutation: string
+  type_local: string
+  valeur_fonciere: number
+  surface_reelle_bati: number
+  prix_m2: number
+  adresse_nom_voie: string
+}
+
+export interface CadastreFilters {
+  type?: Filters['typeBien']
+  annee?: Filters['annee']
+}
+
+export async function fetchCommuneSections(
+  codeCommune: string,
+  filters: CadastreFilters = {},
+): Promise<GeoFeatureResponse> {
+  // When annee is 'all', default to most recent year to avoid duplicate rows per section
+  const annee = !filters.annee || filters.annee === 'all' ? 2024 : filters.annee
+  const params = buildParams({ annee, type: typeParam(filters.type ?? 'all') })
+  return get<GeoFeatureResponse>(`/communes/${codeCommune}/sections`, params)
+}
+
+export async function fetchSectionParcelles(
+  sectionId: string,
+  filters: CadastreFilters = {},
+): Promise<GeoFeatureResponse> {
+  const annee = !filters.annee || filters.annee === 'all' ? 2024 : filters.annee
+  const params = buildParams({ annee, type: typeParam(filters.type ?? 'all') })
+  return get<GeoFeatureResponse>(`/sections/${sectionId}/parcelles`, params)
+}
+
+export async function fetchParcelleMutations(parcelleId: string): Promise<ParcelleMutation[]> {
+  return get<ParcelleMutation[]>(`/parcelles/${parcelleId}/mutations`, new URLSearchParams())
+}
