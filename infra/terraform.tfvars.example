@@ -1,0 +1,12 @@
+# Copier ce fichier en terraform.tfvars et remplir les valeurs
+# terraform.tfvars ne doit PAS être commité (.gitignore)
+
+location             = "francecentral"
+resource_group_name  = "rg-dvf-analytics"
+aks_name             = "aks-dvf-analytics"
+
+# Ces deux noms doivent être globalement uniques sur Azure
+# ACR : sans tirets, 5-50 chars
+acr_name             = "acrdvf<tonpseudo>"
+# Storage : minuscules + chiffres uniquement, 3-24 chars
+storage_account_name = "stdvf<tonpseudo>"

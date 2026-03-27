@@ -61,7 +61,7 @@ az aks get-credentials --resource-group rg-dvf-analytics --name aks-dvf-analytic
 
 | Composant | Statut |
 |-----------|--------|
-| Provider azurerm + resource group | ✅ Tuto init done |
-| AKS + ACR + Blob Storage | ❌ À faire |
+| Provider azurerm + resource group | ✅ Done |
+| AKS + ACR + Blob Storage | ✅ Done — main.tf v1 |
 | K8s manifests (StatefulSet CH, Deployments) | ❌ À faire |
 | CI/CD GitLab | ❌ À faire |
