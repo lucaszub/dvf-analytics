@@ -4,128 +4,154 @@ models:
   - name: stg_dvf
     description: |
       Une ligne par mutation immobilière (vente Appartement/Maison) en Bretagne.
-
-      **Grain :** 1 ligne par id_mutation (une vente peut couvrir plusieurs lots dans le bronze).
-
-      **Règles métier (alignées méthodologie officielle data.gouv.fr) :**
-      - `nature_mutation IN ('Vente', 'Vente en l''état futur d''achèvement', 'Adjudication')`
-      - Mutations à bien unique hors dépendances uniquement (multi-biens exclus)
-      - Restreint aux biens résidentiels : `type_local IN ('Appartement', 'Maison')`
-      - Agrégation multi-lots : plusieurs lignes bronze consolidées via `sum(surface_reelle_bati)`
-      - Outliers exclus : `prix_m2 <= 100 000 €/m²` (seuil officiel DVF)
-      - Surface et valeur foncière nulles ou négatives exclues
-
-      **Calcul prix_m2 :** `valeur_fonciere / sum(surface_reelle_bati)` par mutation
-      (pas une division par ligne bronze individuelle).
-
-      **Source :** `bronze.raw_dvf` (données DVF brutes téléchargées depuis data.gouv.fr)
+      Source : bronze.raw_dvf_geo (DVF géolocalisées avec id_parcelle, longitude, latitude).
+      Grain : 1 ligne par id_mutation (agrégation des lots du bronze).
     columns:
       - name: id_mutation
-        description: |
-          Identifiant unique de la vente (clé naturelle DVF).
-          Format : chaîne alphanumérique assignée par la DGFiP.
-          Garantit l'unicité après agrégation multi-lots.
+        description: Identifiant unique de la vente (clé naturelle DVF).
         tests:
           - not_null
           - unique
 
       - name: date_mutation
-        description: Date de signature de l'acte notarié (format DATE).
+        description: Date de signature de l'acte notarié.
 
       - name: annee
-        description: |
-          Année extraite de date_mutation via `toYear()`.
-          Utilisée comme dimension temporelle dans tous les modèles gold.
+        description: Année extraite via toYear(date_mutation).
         tests:
           - not_null
 
       - name: code_commune
-        description: |
-          Code INSEE de la commune (5 caractères, ex 35238 pour Rennes).
-          Clé de jointure vers stg_communes.
+        description: Code INSEE de la commune (5 caractères).
         tests:
           - not_null
 
       - name: nom_commune
-        description: Libellé de la commune tel que fourni dans les données DVF.
+        description: Libellé de la commune.
 
       - name: code_departement
-        description: |
-          Code du département breton (22, 29, 35, 56).
-          Extrait directement des données DVF.
+        description: Code du département breton (22, 29, 35, 56).
 
       - name: code_postal
-        description: |
-          Code postal de la mutation (5 chiffres).
-          Utilisé par mart_prix_code_postal comme dimension de drill-down.
-          Peut être vide pour certaines mutations historiques.
+        description: Code postal de la mutation.
+
+      - name: adresse_nom_voie
+        description: Nom de la voie de la transaction.
 
       - name: type_local
-        description: |
-          Type de bien immobilier résidentiel.
-          Valeurs possibles : 'Appartement', 'Maison' (filtre Silver).
+        description: Type de bien résidentiel.
         tests:
           - not_null
           - accepted_values:
               values: ["Appartement", "Maison"]
 
       - name: surface_reelle_bati
-        description: |
-          Surface habitable totale en m² pour la mutation complète.
-          Correspond à la somme des surfaces de tous les lots de la mutation
-          (agrégation du bronze).
+        description: Surface habitable totale en m² (somme des lots).
+
+      - name: nombre_pieces_principales
+        description: Nombre de pièces principales.
 
       - name: valeur_fonciere
-        description: |
-          Prix de vente total en euros (valeur foncière DVF).
-          Représente le montant réel de la transaction.
+        description: Prix de vente total en euros.
 
       - name: prix_m2
-        description: |
-          Prix au m² en euros, arrondi à 2 décimales.
-          Formule : `round(valeur_fonciere / surface_reelle_bati, 2)`.
-          NULL impossible (outliers filtrés à <= 100 000 €/m²).
+        description: Prix au m² arrondi à 2 décimales. Outliers <= 100 000 €/m² filtrés.
         tests:
           - not_null
+
+      - name: id_parcelle
+        description: Identifiant parcelle 14 chars — clé de jointure vers stg_parcelles/stg_sections.
+        tests:
+          - not_null
+
+      - name: longitude
+        description: Longitude WGS84 de la transaction.
+
+      - name: latitude
+        description: Latitude WGS84 de la transaction.
 
   - name: stg_communes
     description: |
       Référentiel des communes bretonnes avec coordonnées GPS du centroïde.
-
-      **Grain :** 1 ligne par code_commune unique.
-
-      **Règles métier :**
-      - Restreint aux communes ayant au moins une transaction dans stg_dvf
-        (sous-ensemble actif de raw_communes)
-      - Dédoublonnage via `any()` au cas où raw_communes contiendrait des doublons
-        sur code_commune
-
-      **Source :** `bronze.raw_communes` (référentiel IGN/INSEE des communes)
+      Grain : 1 ligne par code_commune unique.
     columns:
       - name: code_commune
-        description: |
-          Code INSEE de la commune (5 caractères).
-          Clé primaire du référentiel, clé étrangère dans stg_dvf et mart_prix_commune.
+        description: Code INSEE de la commune (5 caractères).
         tests:
           - not_null
           - unique
 
       - name: nom_commune
-        description: Libellé officiel de la commune (source IGN/INSEE).
+        description: Libellé officiel de la commune.
 
       - name: code_dept
-        description: Code du département (22, 29, 35 ou 56 pour la Bretagne).
+        description: Code du département (22, 29, 35, 56).
 
       - name: longitude
-        description: |
-          Longitude WGS84 du centroïde géographique de la commune.
-          Utilisée pour l'affichage cartographique dans mart_prix_commune.
+        description: Longitude WGS84 du centroïde.
         tests:
           - not_null
 
       - name: latitude
-        description: |
-          Latitude WGS84 du centroïde géographique de la commune.
-          Utilisée pour l'affichage cartographique dans mart_prix_commune.
+        description: Latitude WGS84 du centroïde.
+        tests:
+          - not_null
+
+  - name: stg_sections
+    description: |
+      Sections cadastrales Bretagne dédoublonnées.
+      Grain : 1 ligne par section (id 10 chars = code_commune_5 + prefixe_3 + section_2).
+      geometry = GeoJSON MultiPolygon sérialisé en String.
+    columns:
+      - name: id
+        description: Identifiant section 10 chars.
+        tests:
+          - not_null
+          - unique
+
+      - name: commune
+        description: Code INSEE commune 5 chars.
+        tests:
+          - not_null
+
+      - name: section
+        description: Lettre(s) de la section cadastrale.
+
+      - name: contenance
+        description: Superficie de la section en m².
+
+      - name: geometry
+        description: Géométrie GeoJSON MultiPolygon sérialisée en String.
+        tests:
+          - not_null
+
+  - name: stg_parcelles
+    description: |
+      Parcelles cadastrales Bretagne dédoublonnées.
+      Grain : 1 ligne par parcelle (id 14 chars = correspond à id_parcelle dans stg_dvf).
+      geometry = GeoJSON Polygon sérialisé en String.
+    columns:
+      - name: id
+        description: Identifiant parcelle 14 chars.
+        tests:
+          - not_null
+          - unique
+
+      - name: commune
+        description: Code INSEE commune 5 chars.
+        tests:
+          - not_null
+
+      - name: section
+        description: Lettre(s) de la section.
+
+      - name: numero
+        description: Numéro de la parcelle (4 chars).
+
+      - name: contenance
+        description: Superficie de la parcelle en m².
+
+      - name: geometry
+        description: Géométrie GeoJSON Polygon sérialisée en String.
         tests:
           - not_null

@@ -196,6 +196,78 @@ models:
       - name: evolution_pct_n1
         description: Évolution % du prix médian par rapport à N-1.
 
+  - name: mart_prix_section
+    description: |
+      Prix médian par section cadastrale × année × type de bien.
+      Grain : 1 ligne par (section_id, annee, type_local).
+      Join : substring(stg_dvf.id_parcelle, 1, 10) = stg_sections.id.
+      prix_median_m2 = NULL si aucune transaction dans la section.
+    columns:
+      - name: section_id
+        description: Identifiant section 10 chars.
+        tests:
+          - not_null
+
+      - name: code_commune
+        description: Code INSEE commune 5 chars.
+        tests:
+          - not_null
+
+      - name: geometry
+        description: GeoJSON MultiPolygon sérialisé en String.
+        tests:
+          - not_null
+
+      - name: annee
+        description: Année de la transaction.
+
+      - name: type_local
+        description: Type de bien — Appartement ou Maison.
+
+      - name: prix_median_m2
+        description: Prix médian m² (NULL si aucune transaction).
+
+      - name: nb_transactions
+        description: Nombre de transactions dans la section × année × type.
+        tests:
+          - not_null
+
+  - name: mart_prix_parcelle
+    description: |
+      Prix médian par parcelle cadastrale × année × type de bien.
+      Grain : 1 ligne par (parcelle_id, annee, type_local).
+      Join : stg_dvf.id_parcelle = stg_parcelles.id (14 chars, correspondance exacte).
+      prix_median_m2 = NULL si aucune transaction sur la parcelle.
+    columns:
+      - name: parcelle_id
+        description: Identifiant parcelle 14 chars.
+        tests:
+          - not_null
+
+      - name: code_commune
+        description: Code INSEE commune 5 chars.
+        tests:
+          - not_null
+
+      - name: geometry
+        description: GeoJSON Polygon sérialisé en String.
+        tests:
+          - not_null
+
+      - name: annee
+        description: Année de la transaction.
+
+      - name: type_local
+        description: Type de bien — Appartement ou Maison.
+
+      - name: prix_median_m2
+        description: Prix médian m² (NULL si aucune transaction).
+
+      - name: nb_transactions
+        description: Nombre de transactions sur la parcelle × année × type.
+        tests:
+          - not_null
+
   - name: mart_prix_bretagne
     description: |
       Prix immobiliers agrégés pour toute la Bretagne × année × type de bien.

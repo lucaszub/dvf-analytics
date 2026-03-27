@@ -5,29 +5,41 @@ sources:
     database: bronze
     schema: bronze
     tables:
-      - name: raw_dvf
+      - name: raw_dvf_geo
         description: >
-          Données DVF brutes — une ligne par lot (appartement, cave, parking...),
-          plusieurs lignes peuvent partager le même id_mutation.
+          Données DVF géolocalisées — une ligne par lot avec longitude, latitude,
+          id_parcelle (14 chars). Remplace raw_dvf.
         columns:
           - name: id_mutation
-            description: Identifiant unique de la transaction (une vente = N lignes)
+            description: Identifiant unique de la transaction
           - name: date_mutation
             description: Date de la transaction
-          - name: nature_mutation
-            description: Type de mutation (Vente, Adjudication, Echange...)
-          - name: valeur_fonciere
-            description: Prix total de la vente (identique sur toutes les lignes d'une mutation)
-          - name: type_local
-            description: Type de bien (Maison, Appartement, Dépendance, ...)
-          - name: surface_reelle_bati
-            description: Surface bâtie du lot en m²
-          - name: code_commune
-            description: Code INSEE de la commune (5 chiffres)
           - name: code_departement
             description: Code du département (22, 29, 35, 56)
+          - name: code_commune
+            description: Code INSEE de la commune (5 chiffres)
+          - name: nom_commune
+            description: Nom de la commune
           - name: code_postal
             description: Code postal
+          - name: adresse_nom_voie
+            description: Nom de la voie
+          - name: type_local
+            description: Type de bien (Maison, Appartement, ...)
+          - name: surface_reelle_bati
+            description: Surface bâtie en m²
+          - name: nombre_pieces_principales
+            description: Nombre de pièces principales
+          - name: valeur_fonciere
+            description: Prix total de la vente
+          - name: nombre_lots
+            description: Nombre de lots
+          - name: id_parcelle
+            description: Identifiant parcelle 14 chars — clé de join avec cadastre
+          - name: longitude
+            description: Longitude de la transaction
+          - name: latitude
+            description: Latitude de la transaction
 
       - name: raw_communes
         description: Référentiel communes Bretagne avec coordonnées GPS centroïde
@@ -42,3 +54,37 @@ sources:
             description: Longitude du centroïde
           - name: latitude
             description: Latitude du centroïde
+
+      - name: raw_sections
+        description: Sections cadastrales Bretagne (géométries MultiPolygon en String JSON)
+        columns:
+          - name: id
+            description: Identifiant section 10 chars (code_commune_5 + prefixe_3 + section_2)
+          - name: commune
+            description: Code INSEE commune 5 chars
+          - name: prefixe
+            description: Préfixe de la section
+          - name: section
+            description: Lettre(s) de la section
+          - name: contenance
+            description: Superficie en m²
+          - name: geometry
+            description: Géométrie GeoJSON sérialisée en String (MultiPolygon)
+
+      - name: raw_parcelles
+        description: Parcelles cadastrales Bretagne (géométries Polygon en String JSON)
+        columns:
+          - name: id
+            description: Identifiant parcelle 14 chars — correspond à id_parcelle dans raw_dvf_geo
+          - name: commune
+            description: Code INSEE commune 5 chars
+          - name: prefixe
+            description: Préfixe
+          - name: section
+            description: Lettre(s) de la section
+          - name: numero
+            description: Numéro de la parcelle (4 chars)
+          - name: contenance
+            description: Superficie en m²
+          - name: geometry
+            description: Géométrie GeoJSON sérialisée en String (Polygon)
