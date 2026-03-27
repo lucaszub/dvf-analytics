@@ -22,6 +22,34 @@ Contexte global : voir [CLAUDE.md racine](../CLAUDE.md) · Archi détaillée : [
 | `.terraform.lock.hcl` | Lockfile providers — **à committer** |
 | `ARCHITECTURE.md` | Explication des choix d'archi |
 
+## Commandes kubectl
+
+```bash
+# Récupérer le kubeconfig après terraform apply
+az aks get-credentials --resource-group rg-dvf-analytics --name aks-dvf-analytics
+
+# Déployer tout
+kubectl apply -f k8s/
+
+# Vérifier l'état des pods
+kubectl get pods -n dvf
+
+# Voir les logs d'un pod
+kubectl logs -n dvf <pod-name>
+
+# Déclencher l'ingest manuellement
+kubectl create job ingest-run --from=job/ingest -n dvf
+
+# Déclencher dbt manuellement
+kubectl create job dbt-run --from=job/dbt -n dvf
+
+# Récupérer l'IP publique de l'API et du frontend
+kubectl get svc -n dvf
+
+# Se connecter à ClickHouse depuis son pod
+kubectl exec -it -n dvf clickhouse-0 -- clickhouse-client
+```
+
 ## Commandes essentielles
 
 ```bash
@@ -63,5 +91,5 @@ az aks get-credentials --resource-group rg-dvf-analytics --name aks-dvf-analytic
 |-----------|--------|
 | Provider azurerm + resource group | ✅ Done |
 | AKS + ACR + Blob Storage | ✅ Done — main.tf v1 |
-| K8s manifests (StatefulSet CH, Deployments) | ❌ À faire |
+| K8s manifests (StatefulSet CH, Deployments) | ✅ Done — k8s/ |
 | CI/CD GitLab | ❌ À faire |

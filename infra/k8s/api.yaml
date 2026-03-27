@@ -1,0 +1,52 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: dvf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: acrdvflucaszub.azurecr.io/api:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: CLICKHOUSE_HOST
+              value: "clickhouse"  # DNS interne K8s → clickhouse.dvf.svc.cluster.local
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+# Service LoadBalancer : expose l'API sur une IP publique Azure
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: dvf
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: LoadBalancer

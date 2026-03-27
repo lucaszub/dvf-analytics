@@ -1,0 +1,75 @@
+---
+# Job ingest : télécharge les CSV DVF et charge dans ClickHouse (bronze)
+# À déclencher manuellement : kubectl create job ingest-run --from=job/ingest -n dvf
+# ou via CI/CD après terraform apply
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingest
+  namespace: dvf
+spec:
+  ttlSecondsAfterFinished: 3600 # nettoyage auto du pod 1h après complétion
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Attend que ClickHouse soit prêt avant de lancer l'ingest
+        - name: wait-clickhouse
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://clickhouse:8123/ping; do
+                echo "Attente ClickHouse..."; sleep 3;
+              done
+      containers:
+        - name: ingest
+          image: acrdvflucaszub.azurecr.io/ingest:latest
+          env:
+            - name: CLICKHOUSE_HOST
+              value: "clickhouse"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+---
+# Job dbt : transformations Silver + Gold
+# À déclencher après le Job ingest
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dbt
+  namespace: dvf
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-clickhouse
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://clickhouse:8123/ping; do
+                echo "Attente ClickHouse..."; sleep 3;
+              done
+      containers:
+        - name: dbt
+          image: acrdvflucaszub.azurecr.io/dbt:latest
+          env:
+            - name: CLICKHOUSE_HOST
+              value: "clickhouse"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"

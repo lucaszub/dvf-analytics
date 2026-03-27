@@ -1,0 +1,109 @@
+---
+# ConfigMap : config utilisateur ClickHouse (reprise de clickhouse/users.d/default-user.xml)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-users
+  namespace: dvf
+data:
+  default-user.xml: |
+    <clickhouse>
+      <users>
+        <default>
+          <password></password>
+          <networks>
+            <ip>::/0</ip>
+          </networks>
+          <profile>default</profile>
+          <quota>default</quota>
+        </default>
+      </users>
+    </clickhouse>
+
+---
+# PersistentVolumeClaim : disque Azure pour les données ClickHouse
+# Survit aux redémarrages du pod, détruit uniquement avec terraform destroy
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clickhouse-data
+  namespace: dvf
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+# StatefulSet : ClickHouse
+# StatefulSet (pas Deployment) car la DB a besoin d'un nom de pod stable
+# et d'un volume persistant attaché
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: dvf
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:24
+          ports:
+            - containerPort: 8123 # HTTP (utilisé par l'API et dbt)
+            - containerPort: 9000 # protocole natif
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: users-config
+              mountPath: /etc/clickhouse-server/users.d
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "6Gi"  # laisse de la place pour l'API sur 8 Go total
+              cpu: "1500m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: clickhouse-data
+        - name: users-config
+          configMap:
+            name: clickhouse-users
+
+---
+# Service : expose ClickHouse en interne au cluster
+# ClusterIP = accessible uniquement depuis les autres pods (api, ingest, dbt)
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: dvf
+spec:
+  selector:
+    app: clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
