@@ -29,7 +29,7 @@ Ordre de démarrage : clickhouse → ingest → dbt → api → frontend
 
 ```bash
 docker compose up                              # full stack
-docker compose up -d clickhouse               # ClickHouse seul
+docker compose up -d clickhouse               # ClickHouse seul (port 8124)
 docker compose up ingest                       # bronze (exit quand terminé)
 docker compose up dbt                          # transforms (exit quand terminé)
 docker compose up api                          # FastAPI :8000
@@ -37,7 +37,7 @@ docker compose up frontend                     # React :5173
 docker compose down -v && docker compose up   # reset complet
 
 # Validation
-curl "http://localhost:8123/?query=SELECT+count()+FROM+bronze.raw_dvf"
+curl "http://localhost:8124/?query=SELECT+count()+FROM+bronze.raw_dvf_geo"
 curl http://localhost:8000/docs
 ```
 
@@ -46,10 +46,11 @@ curl http://localhost:8000/docs
 | Module | Statut |
 |--------|--------|
 | Docker Compose + ClickHouse | ✅ Done |
-| ingestion/ | 🔄 À refaire — migrer vers DVF géolocalisées + sections + parcelles |
-| transform/ (Silver + Gold) | 🔄 À étendre — stg_sections, stg_parcelles, mart_prix_section, mart_prix_parcelle |
-| api/ (FastAPI) | 🔄 En cours |
-| frontend/ (React) | 🔄 À refaire — GeoJsonLayer polygones, drill-down par zoom |
+| ingestion/ | ✅ Done — 4 tables bronze : raw_dvf_geo, raw_communes, raw_sections, raw_parcelles |
+| transform/ Silver | ✅ Done — stg_dvf, stg_communes, stg_sections, stg_parcelles |
+| transform/ Gold | ✅ Done — mart_prix_commune, mart_prix_departement, mart_prix_bretagne, mart_prix_section, mart_prix_parcelle |
+| api/ (FastAPI) | ✅ Done — tous les endpoints SPEC implémentés (drill-down sections/parcelles/mutations) |
+| frontend/ (React) | 🔄 À finir — brancher sections/parcelles sur l'API, MutationPanel |
 | .gitlab-ci.yml | ❌ À faire |
 
 ## Modules — contexte détaillé

@@ -3,96 +3,25 @@
 API REST qui expose les données Gold ClickHouse avec GeoJSON pour le rendu polygonal.
 Contexte global : voir [CLAUDE.md racine](../CLAUDE.md) · Specs endpoints : [docs/SPEC.md](../docs/SPEC.md)
 
-## Endpoints
+## Endpoints (tous implémentés ✅)
 
-### Existants
-| Route | Source Gold | Description |
-|-------|-------------|-------------|
-| `GET /communes` | mart_prix_commune | Prix médian + volume par commune |
-| `GET /departements` | mart_prix_departement | Stats par département |
-| `GET /kpis` | mart_prix_bretagne | KPIs globaux Bretagne |
-| `GET /code_postaux` | mart_prix_code_postal | Stats par code postal |
-| `GET /mutations` | silver.stg_dvf | Transactions individuelles |
+| Route | Router | Source |
+|-------|--------|--------|
+| `GET /communes` | communes.py | mart_prix_commune |
+| `GET /departements` | departements.py | mart_prix_departement |
+| `GET /bretagne/kpis` | kpis.py | mart_prix_bretagne |
+| `GET /bretagne/historique` | kpis.py | mart_prix_bretagne |
+| `GET /code-postaux` | code_postaux.py | mart_prix_code_postal |
+| `GET /mutations` | mutations.py | silver.stg_dvf |
+| `GET /communes/{code}/sections` | sections.py | mart_prix_section → GeoJSON FeatureCollection |
+| `GET /sections/{id}/parcelles` | sections.py | mart_prix_parcelle → GeoJSON FeatureCollection |
+| `GET /parcelles/{id}/mutations` | parcelles.py | silver.stg_dvf |
 
-### Nouveaux (drill-down zoom)
-| Route | Source Gold | Description |
-|-------|-------------|-------------|
-| `GET /communes/{code_commune}/sections` | mart_prix_section | GeoJSON sections d'une commune |
-| `GET /sections/{section_id}/parcelles` | mart_prix_parcelle | GeoJSON parcelles d'une section |
-| `GET /parcelles/{parcelle_id}/mutations` | stg_dvf | Mutations individuelles sur une parcelle |
+## Notes d'implémentation
 
-## Réponse GeoJSON (sections et parcelles)
-
-Les endpoints `/sections` et `/parcelles` retournent un GeoJSON FeatureCollection :
-```python
-{
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "geometry": {...},           # MultiPolygon (sections) ou Polygon (parcelles)
-      "properties": {
-        "id": "35238000AB",        # section_id ou parcelle_id
-        "code_commune": "35238",
-        "prix_median_m2": 3450.0,  # null si aucune transaction
-        "nb_transactions": 42,
-        "annee": 2023,
-        "type_local": "Appartement"
-      }
-    }
-  ]
-}
-```
-
-La géométrie est stockée en String dans ClickHouse → `json.loads(row["geometry"])` pour désérialiser.
-
-## Fichiers clés
-
-| Fichier | Rôle |
-|---------|------|
-| `main.py` | App FastAPI, CORS, inclusion routers |
-| `db.py` | `get_client()` + `ClientDep` |
-| `routers/communes.py` | /communes |
-| `routers/departements.py` | /departements |
-| `routers/kpis.py` | /kpis |
-| `routers/sections.py` | /communes/{code}/sections (nouveau) |
-| `routers/parcelles.py` | /sections/{id}/parcelles (nouveau) |
-| `routers/mutations.py` | /parcelles/{id}/mutations (nouveau) |
-
-## Pattern GeoJSON dans les routers
-
-```python
-from fastapi import APIRouter
-from api.db import ClientDep
-import json
-
-router = APIRouter()
-
-@router.get("/communes/{code_commune}/sections")
-async def get_sections(
-    code_commune: str,
-    client: ClientDep,
-    annee: int | None = None,
-    type: str | None = None,
-):
-    params = {"commune": code_commune}
-    # ... build query with parameters dict
-    result = client.query("SELECT ...", parameters=params)
-    features = [
-        {
-            "type": "Feature",
-            "geometry": json.loads(row["geometry"]),
-            "properties": {
-                "id": row["section_id"],
-                "code_commune": row["code_commune"],
-                "prix_median_m2": row["prix_median_m2"],
-                "nb_transactions": row["nb_transactions"],
-            }
-        }
-        for row in result.named_results()
-    ]
-    return {"type": "FeatureCollection", "features": features}
-```
+- Géométries stockées en `String` dans ClickHouse → `json.loads(row["geometry"])` dans les routers
+- `substring(parcelle_id, 1, 10)` pour retrouver la section d'une parcelle
+- Les endpoints sections/parcelles retournent `prix_median_m2: null` si aucune transaction (LEFT JOIN)
 
 ## Sécurité — règles absolues
 
