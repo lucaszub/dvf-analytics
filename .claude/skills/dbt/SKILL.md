@@ -1,6 +1,7 @@
 ---
 name: dbt
 description: dbt-clickhouse patterns, ClickHouse SQL dialect quirks, run/test commands for this project
+paths: ["transform/**"]
 ---
 # dbt — DVF Analytics
 

@@ -119,19 +119,7 @@ transform/
 - Chaque modèle doit avoir des tests dans `schema.yml`
 - Max 100 chars par ligne (SQLFluff enforced)
 
-## Commandes
-
-```bash
-docker compose up dbt
-docker compose run --rm dbt dbt run
-docker compose run --rm dbt dbt test
-docker compose run --rm dbt dbt run --select stg_sections
-docker compose run --rm dbt dbt run --select mart_prix_section mart_prix_parcelle
-
-sqlfluff lint transform/models/ --dialect clickhouse
-```
-
 ## Skills disponibles
 
-- `/dbt` — entry point principal (commandes, debug, création modèles, tests)
+- `/dbt` — commandes dbt run/test/select + debug (auto-chargé dans transform/**)
 - Subagent `dbt-reviewer` — valide les modèles Silver/Gold contre SPEC.md

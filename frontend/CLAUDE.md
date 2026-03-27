@@ -135,14 +135,7 @@ const INITIAL_VIEW_STATE = {
 };
 ```
 
-## Commandes
-
-```bash
-docker compose up frontend
-cd frontend && npm run dev
-cd frontend && npm run build
-```
-
 ## Skills disponibles
 
+- `/frontend-cmds` — commandes npm/docker/curl (auto-chargé dans frontend/**)
 - `/shadcn` — ajouter/modifier des composants shadcn/ui, debug styling

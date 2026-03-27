@@ -119,11 +119,4 @@ client = clickhouse_connect.get_client(
 
 ## Commandes
 
-```bash
-docker compose up ingest          # run complet (attend clickhouse healthy)
-
-# Validation
-curl "http://localhost:8123/?query=SELECT+count()+FROM+bronze.raw_dvf_geo"
-curl "http://localhost:8123/?query=SELECT+count()+FROM+bronze.raw_sections"
-curl "http://localhost:8123/?query=SELECT+count()+FROM+bronze.raw_parcelles"
-```
+Voir `/docker-cmds` (auto-chargé partout).
