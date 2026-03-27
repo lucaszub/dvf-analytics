@@ -16,6 +16,11 @@ output "acr_login_cmd" {
   value       = "az acr login --name ${azurerm_container_registry.acr.name}"
 }
 
+output "acr_admin_username" {
+  description = "Username admin ACR (pour docker login depuis K8s)"
+  value       = azurerm_container_registry.acr.admin_username
+}
+
 output "resource_group_name" {
   value = azurerm_resource_group.dvf.name
 }

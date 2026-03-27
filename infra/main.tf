@@ -2,7 +2,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 
@@ -34,7 +34,7 @@ resource "azurerm_container_registry" "acr" {
   resource_group_name = azurerm_resource_group.dvf.name
   location            = azurerm_resource_group.dvf.location
   sku                 = "Basic"
-  admin_enabled       = false
+  admin_enabled       = true # permet docker login sans role assignment Owner
 }
 
 # ── Blob Storage ──────────────────────────────────────────────────────────────
@@ -86,12 +86,5 @@ resource "azurerm_kubernetes_cluster" "dvf" {
   }
 }
 
-# ── ACR Pull Rights ───────────────────────────────────────────────────────────
-# Permet à AKS de puller les images depuis ACR sans credentials
-
-resource "azurerm_role_assignment" "aks_acr_pull" {
-  principal_id                     = azurerm_kubernetes_cluster.dvf.kubelet_identity[0].object_id
-  role_definition_name             = "AcrPull"
-  scope                            = azurerm_container_registry.acr.id
-  skip_service_principal_aad_check = true
-}
+# Note : AcrPull role assignment supprimé — nécessite le rôle Owner sur la subscription.
+# À la place : admin_enabled = true sur l'ACR, login via az acr login --name <acr>

@@ -20,12 +20,12 @@ variable "acr_name" {
   description = "Nom du Container Registry (doit être globalement unique sur Azure, sans tirets)"
   type        = string
   # À surcharger dans terraform.tfvars avec un nom unique
-  default     = "acrdvfanalytics"
+  default = "acrdvfanalytics"
 }
 
 variable "storage_account_name" {
   description = "Nom du Storage Account (doit être globalement unique, 3-24 chars, minuscules)"
   type        = string
   # À surcharger dans terraform.tfvars avec un nom unique
-  default     = "stdvfanalytics"
+  default = "stdvfanalytics"
 }
