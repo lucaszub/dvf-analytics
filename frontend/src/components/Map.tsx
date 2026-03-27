@@ -173,7 +173,7 @@ function DeptLayer({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function onEachFeature(feature: Feature, layer: any) {
     const code = feature.properties?.code as string
-    const nom  = feature.properties?.nom  as string
+    const nom = feature.properties?.nom as string
     const median = deptMedian[code]
     const deptCommunes = communes.filter(c => c.departmentCode === code)
     const totalVentes = deptCommunes.reduce((s, c) => s + c.transactions, 0)
@@ -380,8 +380,8 @@ function SectionsLayer({
         if (minLat !== Infinity)
           map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [40, 40], animate: true })
       })
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => { })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCommune.id, filters.annee, filters.typeBien])
 
   const colorFn = useMemo(() => {
@@ -477,8 +477,8 @@ function ParcellesLayer({
         if (minLat !== Infinity)
           map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [20, 20], animate: true })
       })
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => { })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId, filters.annee, filters.typeBien])
 
   const colorFn = useMemo(() => {
@@ -573,10 +573,10 @@ function H3Layer({
       fetch(url)
         .then(r => (r.ok ? r.json() : null))
         .then(data => { if (data) setH3GeoJSON(data as FeatureCollection) })
-        .catch(() => {})
+        .catch(() => { })
     }, 300)
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, selectedDept, filters.annee, filters.typeBien, map])
 
   const colorFn = useMemo(() => {
