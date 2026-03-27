@@ -8,7 +8,7 @@ Contexte global : voir [CLAUDE.md racine](../CLAUDE.md) · Archi détaillée : [
 | Outil | Rôle |
 |-------|------|
 | Terraform | Provisionner AKS, ACR, Blob Storage |
-| AKS | 1 node pool, 2× Standard_D2s_v3 |
+| AKS | 1 node pool, 1× Standard_B2ms |
 | K8s manifests | Déployer les workloads (à venir) |
 
 ## Fichiers

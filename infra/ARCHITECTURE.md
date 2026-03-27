@@ -93,13 +93,18 @@ Pour toute la France (~7M transactions, fichier DVF ~2 Go), on a besoin :
 
 ```
 Terraform
-├── AKS — 1 node pool, 2× Standard_D2s_v3 (2 vCPU, 8 Go RAM)
+├── AKS — 1 node pool, 1× Standard_B2ms (2 vCPU, 8 Go RAM)
 ├── Container Registry (ACR)
 └── Blob Storage (CSV DVF bruts)
 ```
 
-**1 seul node pool** avec des VMs suffisamment grandes (8 Go) pour que
-ClickHouse, l'API et le frontend cohabitent sans se marcher dessus.
+**1 seul node, 1 seul node pool.** Tous les workloads cohabitent sur la même VM.
+Pas de HA — si le node tombe, tout est down le temps que K8s le redémarre (~2 min).
+Acceptable pour un projet perso sans SLA.
+
+**Pourquoi Standard_B2ms plutôt que D2s_v3 ?** Même RAM (8 Go), ~15 % moins cher.
+VM "burstable" : accumule des crédits CPU au repos, les dépense lors des pics
+(ingest, GROUP BY ClickHouse). Parfait pour une charge ponctuelles.
 
 ### Hiérarchie des ressources
 
@@ -108,7 +113,7 @@ Azure Subscription
 └── Resource Group  rg-dvf-analytics
     │
     ├── AKS Cluster  aks-dvf-analytics
-    │   └── Node Pool (2× Standard_D2s_v3 — 2 vCPU, 8 Go RAM)
+    │   └── Node Pool (1× Standard_B2ms — 2 vCPU, 8 Go RAM)
     │       ├── StatefulSet : clickhouse-0
     │       │   └── PersistentVolumeClaim → Azure Managed Disk (50 Go)
     │       ├── Deployment : api (FastAPI)
@@ -253,14 +258,14 @@ terraform {
 
 | Ressource | Config | €/mois |
 |-----------|--------|--------|
-| Node pool | 2× Standard_D2s_v3 | ~120 € |
+| Node pool | 1× Standard_B2ms | ~61 € |
+| Managed Disk ClickHouse | 50 Go Premium SSD | ~5 € |
 | Container Registry | SKU Basic | ~5 € |
 | Blob Storage | 10 Go LRS | < 1 € |
-| Managed Disk ClickHouse | 50 Go Premium SSD | ~5 € |
-| **Total** | | **~130 €/mois** |
+| **Total** | | **~72 €/mois** |
 
 > Avec `terraform destroy` quand tu ne travailles pas : ~0 €.
-> Azure propose 200 € de crédits gratuits à l'inscription.
+> Azure propose 200 € de crédits gratuits à l'inscription → ~2,5 mois H24 gratuits.
 
 ---
 
